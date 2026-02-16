@@ -3,12 +3,14 @@ from __future__ import annotations
 import csv
 import os
 import threading
+import unicodedata
 import zipfile
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
+from phantom_backend.config_manager import ConfigManager
 from phantom_backend.core.errors import PhantomError
 from phantom_backend.services.repo_paths import repo_root_for
 
@@ -16,10 +18,36 @@ _ZIP_HANDLES = {}
 _GLOBAL_ZIP_LOCK = threading.Lock()
 
 
+def normalize_text(text: str) -> str:
+    """
+    Normalize text for search using standard Unicode normalization.
+    This handles:
+    - Converting Arabic Presentation Forms (e.g. ﺳﻴﻒ) to standard Arabic (سيف).
+    - Removing diacritics.
+    - Case folding.
+    """
+    if not text:
+        return ""
+
+    # 1. NFKC Compatibility Decomposition matches Presentation Forms to Standard characters
+    text = unicodedata.normalize("NFKC", text)
+
+    # 2. Casefold for case-insensitive matching (stronger than lower())
+    text = text.casefold()
+
+    # 3. Remove non-spacing marks (diacritics)
+    text = "".join(
+        c for c in unicodedata.normalize("NFD", text) if unicodedata.category(c) != "Mn"
+    )
+
+    return text
+
+
 @dataclass(frozen=True)
 class ItemRow:
     id: int
     name: str
+    normalized_name: str
     icon_id: str | None = None
     max_upgrade: int = 0
     raw: dict[str, Any] | None = None
@@ -97,10 +125,16 @@ class ItemAssetService:
     def list_csv_files(self) -> list[str]:
         return sorted([p.name for p in self.items_dir().glob("*.csv")])
 
-    def _load_csv(self, csv_name: str, language: str = "en") -> dict[int, ItemRow]:
+    def _load_csv(
+        self, csv_name: str, language: str | None = None
+    ) -> dict[int, ItemRow]:
+        if language is None:
+            language = ConfigManager().language
         return _load_csv(self.items_dir() / csv_name, language, self._game)
 
-    def get_item(self, *, csv_name: str, item_id: int, language: str = "en") -> ItemRow:
+    def get_item(
+        self, *, csv_name: str, item_id: int, language: str | None = None
+    ) -> ItemRow:
         table = self._load_csv(csv_name, language)
         if item_id not in table:
             raise PhantomError(f"Item {item_id} not found in {csv_name}")
@@ -128,10 +162,13 @@ class ItemAssetService:
         return item_id - (item_id % 100)
 
     def find_item_any_csv(
-        self, item_id: int, language: str = "en", hints: list[str] | None = None
+        self, item_id: int, language: str | None = None, hints: list[str] | None = None
     ) -> ItemRow | None:
         """Find an item by ID across all known CSVs, prioritizing hints."""
         candidates = self.list_csv_files()
+        if language is None:
+            language = ConfigManager().language
+
         if hints:
             # Reorder: hints first
             others = [c for c in candidates if c not in hints]
@@ -188,13 +225,17 @@ class ItemAssetService:
         *,
         csv_name: str | None = None,
         q: str,
-        language: str = "en",
+        language: str | None = None,
         limit: int = 50,
     ) -> list[ItemRow]:
         """Search items. If csv_name is None, search all."""
-        qn = q.strip().lower()
+        # Normalize the query using the same helper
+        qn = normalize_text(q)
         if not qn and not csv_name:
             return []
+
+        if language is None:
+            language = ConfigManager().language
 
         sources = [csv_name] if csv_name else self.list_csv_files()
         hits: list[ItemRow] = []
@@ -202,7 +243,8 @@ class ItemAssetService:
         for fname in sources:
             table = self._load_csv(fname, language)
             for item in table.values():
-                if not qn or qn in item.name.lower() or qn in str(item.id):
+                # Compare normalized query against normalized name
+                if not qn or qn in item.normalized_name or qn in str(item.id):
                     hits.append(item)
                 if len(hits) >= limit:
                     return hits  # Global limit
@@ -305,6 +347,7 @@ def _load_csv(path: Path, language: str, game: str) -> dict[int, ItemRow]:
             out[item_id] = ItemRow(
                 id=item_id,
                 name=str(name),
+                normalized_name=normalize_text(str(name)),
                 icon_id=str(icon_id) if icon_id else None,
                 max_upgrade=max_upgrade,
                 raw=row,

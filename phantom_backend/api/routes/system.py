@@ -176,3 +176,24 @@ def host_bridge_status() -> dict[str, object]:
     except Exception:
         out["bridge_status"] = None
     return out
+
+
+@router.get("/config")
+def get_config() -> dict[str, object]:
+    """Get current configuration."""
+    cm = ConfigManager()
+    return {
+        "language": cm.language,
+        # Add other config fields here as needed
+    }
+
+
+@router.post("/config")
+def update_config(config: dict[str, object]) -> dict[str, object]:
+    """Update configuration."""
+    cm = ConfigManager()
+    if "language" in config:
+        cm.language = str(config["language"])
+    return {
+        "language": cm.language,
+    }

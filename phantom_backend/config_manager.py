@@ -1,4 +1,6 @@
 import json
+import os
+import platform
 from pathlib import Path
 from typing import Any
 
@@ -15,7 +17,16 @@ class ConfigManager:
         return cls._instance
 
     def _load_config(self):
-        self._config_path = Path(CONFIG_FILE)
+        # Determine platform-specific config directory
+        if platform.system() == "Windows":
+            base = Path(os.environ.get("LOCALAPPDATA", "."))
+        else:
+            base = Path.home() / ".config"
+
+        self._config_dir = base / "PhantomToolkit"
+        self._config_dir.mkdir(parents=True, exist_ok=True)
+        self._config_path = self._config_dir / CONFIG_FILE
+
         if self._config_path.exists():
             try:
                 with open(self._config_path, "r", encoding="utf-8") as f:
@@ -46,3 +57,11 @@ class ConfigManager:
     @last_save_dir.setter
     def last_save_dir(self, value: str):
         self.set("last_save_dir", value)
+
+    @property
+    def language(self) -> str:
+        return self.get("language", "en")
+
+    @language.setter
+    def language(self, value: str):
+        self.set("language", value)

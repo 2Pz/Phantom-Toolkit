@@ -34,10 +34,14 @@ export interface Item {
 export interface BackendItem {
   id: number;
   name: string;
-  icon_id?: number | null;
-  max_upgrade?: number;
+  icon_id: string | null;
+  max_upgrade: number;
   gem_id?: number;
   count?: number;
+}
+
+export interface AppConfig {
+  language: string;
 }
 
 export interface Build {
