@@ -19,7 +19,7 @@ def list_csvs(game: str):
 
 @router.get("/items/search")
 def search_items(
-    game: str, q: str, csv: str | None = None, lang: str = "en", limit: int = 50
+    game: str, q: str, csv: str | None = None, lang: str | None = None, limit: int = 50
 ):
     svc = ItemAssetService(game_key=game)
     hits = svc.search_items(csv_name=csv, q=q, language=lang, limit=limit)
@@ -27,7 +27,7 @@ def search_items(
 
 
 @router.get("/items/get")
-def get_item(game: str, csv: str, id: int, lang: str = "en"):
+def get_item(game: str, csv: str, id: int, lang: str | None = None):
     svc = ItemAssetService(game_key=game)
     item = svc.get_item(csv_name=csv, item_id=id, language=lang)
     return {"item": item.__dict__}

@@ -1,4 +1,4 @@
-import { Build, GameType, Item, PlayerData, StatusState, SlotType, BackendItem } from './types';
+import { Build, GameType, Item, PlayerData, StatusState, SlotType, BackendItem, AppConfig, BackupSettings, BackupEntry } from './types';
 
 function getTypeForCsv(csv: string): SlotType {
     const lookup: Record<string, SlotType> = {
@@ -87,7 +87,6 @@ function isWeaponBackendSlot(beKey: string): boolean {
     return beKey.endsWith('_wep');
 }
 
-// Mapping helpers
 export function toFrontendGame(backendKey: string): GameType | null {
     if (backendKey === 'eldenring') return 'ELDEN_RING';
     if (backendKey === 'ds3') return 'DARK_SOULS_3';
@@ -98,6 +97,101 @@ export function toBackendGame(frontendKey: GameType | string): string {
     if (frontendKey === 'ELDEN_RING') return 'eldenring';
     if (frontendKey === 'DARK_SOULS_3') return 'ds3';
     return (frontendKey as string).toLowerCase();
+}
+
+export async function getConfig(): Promise<AppConfig> {
+    try {
+        const res = await fetch(`${API_BASE}/system/config`);
+        return await res.json();
+    } catch (e) {
+        console.error('Failed to get config', e);
+        return { language: 'en' };
+    }
+}
+
+export async function updateConfig(config: Partial<AppConfig>): Promise<AppConfig> {
+    try {
+        const res = await fetch(`${API_BASE}/system/config`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(config)
+        });
+        return await res.json();
+    } catch (e) {
+        console.error('Failed to update config', e);
+        return { language: 'en' };
+    }
+}
+
+// Actions
+export async function quitToMenu(game: GameType) {
+    await fetch(`${API_BASE}/${toBackendGame(game)}/actions/quit_to_menu`, { method: 'POST' });
+}
+
+export async function fixInfiniteLoading(game: GameType) {
+    await fetch(`${API_BASE}/${toBackendGame(game)}/actions/loading_fix/start`, { method: 'POST' });
+}
+
+export async function toggleFogWall(game: GameType) {
+    await fetch(`${API_BASE}/${toBackendGame(game)}/actions/fogwall`, { method: 'POST' });
+}
+
+export async function toggleCheat(game: GameType, cheat: string, enable: boolean) {
+    const action = enable ? 'enable' : 'disable';
+    // Backend names match frontend keys mostly, but let's map them just in case or rely on direct mapping if keys match.
+    // Frontend keys: 'noDead', 'noHit', 'noWeight', 'noStamina', 'noFP', 'noGoods', 'noArrow'
+    // Backend names: "NoDead", "NoDamage", "NoStaminaConsumption", "NoFPConsumption", "NoGoodsConsume", "NoArrowConsume", "NoWeight", "NoHit"
+
+    const map: Record<string, string> = {
+        'noDead': 'NoDead',
+        'noDamage': 'NoDamage',
+        'noStamina': 'NoStaminaConsumption',
+        'noFP': 'NoFPConsumption',
+        'noGoods': 'NoGoodsConsume',
+        'noArrow': 'NoArrowConsume',
+        'noWeight': 'NoWeight',
+        'noHit': 'NoHit'
+    };
+
+    const backendName = map[cheat];
+    if (!backendName) {
+        console.error(`Unknown cheat key: ${cheat}`);
+        return;
+    }
+
+    await fetch(`${API_BASE}/${toBackendGame(game)}/cheats/${backendName}/${action}`, { method: 'POST' });
+}
+
+export async function searchItems(game: GameType, query: string, csv?: string, limit?: number): Promise<Item[]> {
+    try {
+        const gameKey = toBackendGame(game);
+        let url = `${API_BASE}/${gameKey}/items/search?q=${encodeURIComponent(query)}`;
+        if (csv) {
+            url += `&csv=${encodeURIComponent(csv)}`;
+        }
+        if (limit) {
+            url += `&limit=${limit}`;
+        }
+        // Language is handled by backend config default
+
+        const res = await fetch(url);
+        if (!res.ok) return [];
+        const data = await res.json();
+
+        return (data.items || []).map((d: BackendItem) => ({
+            id: d.id.toString(),
+            name: d.name,
+            icon_id: d.icon_id?.toString() || '',
+            image: (d.icon_id && Number(d.icon_id) !== 0) ? `${API_BASE}/${gameKey}/icons/${d.icon_id}` : '',
+            type: getTypeForCsv(csv || ''), // Use helper here
+            description: '',
+            weight: 0,
+            maxUpgrade: d.max_upgrade
+        }));
+    } catch (e) {
+        console.error("Search error", e);
+        return [];
+    }
 }
 
 export async function detectGame(): Promise<GameType | null> {
@@ -390,76 +484,6 @@ export async function writeStats(game: GameType, playerNum: number, status: Stat
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ stats: payload })
     });
-}
-
-// Actions
-export async function quitToMenu(game: GameType) {
-    await fetch(`${API_BASE}/${toBackendGame(game)}/actions/quit_to_menu`, { method: 'POST' });
-}
-
-export async function fixInfiniteLoading(game: GameType) {
-    await fetch(`${API_BASE}/${toBackendGame(game)}/actions/loading_fix/start`, { method: 'POST' });
-}
-
-export async function toggleFogWall(game: GameType) {
-    await fetch(`${API_BASE}/${toBackendGame(game)}/actions/fogwall`, { method: 'POST' });
-}
-
-export async function toggleCheat(game: GameType, cheat: string, enable: boolean) {
-    const action = enable ? 'enable' : 'disable';
-    // Backend names match frontend keys mostly, but let's map them just in case or rely on direct mapping if keys match.
-    // Frontend keys: 'noDead', 'noHit', 'noWeight', 'noStamina', 'noFP', 'noGoods', 'noArrow'
-    // Backend names: "NoDead", "NoDamage", "NoStaminaConsumption", "NoFPConsumption", "NoGoodsConsume", "NoArrowConsume", "NoWeight", "NoHit"
-
-    const map: Record<string, string> = {
-        'noDead': 'NoDead',
-        'noDamage': 'NoDamage',
-        'noStamina': 'NoStaminaConsumption',
-        'noFP': 'NoFPConsumption',
-        'noGoods': 'NoGoodsConsume',
-        'noArrow': 'NoArrowConsume',
-        'noWeight': 'NoWeight',
-        'noHit': 'NoHit'
-    };
-
-    const backendName = map[cheat];
-    if (!backendName) {
-        console.error(`Unknown cheat key: ${cheat}`);
-        return;
-    }
-
-    await fetch(`${API_BASE}/${toBackendGame(game)}/cheats/${backendName}/${action}`, { method: 'POST' });
-}
-
-export async function searchItems(game: GameType, query: string, csv?: string, limit?: number): Promise<Item[]> {
-    try {
-        const gameKey = toBackendGame(game);
-        let url = `${API_BASE}/${gameKey}/items/search?q=${encodeURIComponent(query)}`;
-        if (csv) {
-            url += `&csv=${encodeURIComponent(csv)}`;
-        }
-        if (limit) {
-            url += `&limit=${limit}`;
-        }
-
-        const res = await fetch(url);
-        if (!res.ok) return [];
-        const data = await res.json();
-
-        return (data.items || []).map((d: BackendItem) => ({
-            id: d.id.toString(),
-            name: d.name,
-            icon_id: d.icon_id?.toString() || '',
-            image: (d.icon_id && Number(d.icon_id) !== 0) ? `${API_BASE}/${gameKey}/icons/${d.icon_id}` : '',
-            type: getTypeForCsv(csv || ''), // Use helper here
-            description: '',
-            weight: 0,
-            maxUpgrade: d.max_upgrade
-        }));
-    } catch (e) {
-        console.error("Search error", e);
-        return [];
-    }
 }
 
 export async function listBuilds(): Promise<string[]> {
@@ -832,8 +856,6 @@ export function convertBuildToSaveFormat(game: GameType, slots: Record<string, I
 }
 
 // =================== Backup API ===================
-
-import type { BackupSettings, BackupEntry } from './types';
 
 export async function getBackupSettings(game: string = ''): Promise<BackupSettings> {
     const gameKey = toBackendGame(game);

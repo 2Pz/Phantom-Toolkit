@@ -6,8 +6,9 @@ import { SLOT_CSV_MAPPING } from './constants';
 import EquipmentGrid from './components/EquipmentGrid';
 import { AlertModal } from './components/Modal';
 import BackupTab from './components/BackupTab';
-import { detectGame, getPlayers, quitToMenu, fixInfiniteLoading, toggleFogWall, writeStats, toggleCheat as apiToggleCheat, searchItems, writeBuild, inspectBuild, mapBackendToFrontendSlots, convertBuildToSaveFormat, saveBuild, browseSaveFile } from './api';
+import { detectGame, getPlayers, quitToMenu, fixInfiniteLoading, toggleFogWall, writeStats, toggleCheat as apiToggleCheat, searchItems, writeBuild, inspectBuild, mapBackendToFrontendSlots, convertBuildToSaveFormat, saveBuild, browseSaveFile, getConfig } from './api';
 import WeaponConfig from './components/WeaponConfig';
+import { LanguageSelector } from './components/LanguageSelector';
 
 const ER_ATTRIBUTES = ['Vigor', 'Mind', 'Endurance', 'Strength', 'Dexterity', 'Intelligence', 'Faith', 'Arcane'];
 const DS3_ATTRIBUTES = ['Vigor', 'Attunement', 'Endurance', 'Vitality', 'Strength', 'Dexterity', 'Intelligence', 'Faith', 'Luck'];
@@ -384,6 +385,14 @@ const App: React.FC = () => {
   const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [loadWithStats, setLoadWithStats] = useState(true);
+  const [language, setLanguage] = useState('en');
+
+  // Load config on mount
+  useEffect(() => {
+    getConfig().then(cfg => {
+      if (cfg.language) setLanguage(cfg.language);
+    });
+  }, []);
 
   const [localBuild, setLocalBuild] = useState<Build>({
     id: '',
@@ -781,7 +790,12 @@ const App: React.FC = () => {
           </div>
         </div>
 
-        <div className="flex bg-black/40 border border-white/10 rounded-sm p-0.5 shrink-0">
+        <div className="flex bg-black/40 border border-white/10 rounded-sm p-0.5 shrink-0 items-center gap-2">
+          <LanguageSelector
+            currentLanguage={language}
+            onLanguageChange={(lang) => setLanguage(lang)}
+          />
+          <div className="w-px h-4 bg-white/10 mx-1"></div>
           {(['DARK_SOULS_3', 'ELDEN_RING'] as GameType[]).map(g => (
             <button
               key={g}
