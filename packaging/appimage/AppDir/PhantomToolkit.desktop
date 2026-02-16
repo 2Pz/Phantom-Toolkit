@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Phantom Toolkit
+Comment=Elden Ring / Dark Souls III companion (Proton)
+Exec=AppRun
+Icon=PhantomToolkit
+Terminal=false
+Categories=Game;Utility;
+StartupWMClass=PhantomToolkit
+

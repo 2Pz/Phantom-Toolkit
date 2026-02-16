@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Phantom Toolkit
+Comment=Phantom Toolkit desktop companion
+Exec=PhantomToolkit
+Icon=phantom-toolkit
+Terminal=false
+Categories=Utility;Game;

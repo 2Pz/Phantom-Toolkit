@@ -1,0 +1,166 @@
+# =============================================================================
+# Phantom Toolkit - Git Cliff Configuration
+# =============================================================================
+#
+# This file configures git-cliff for automatic changelog generation.
+# Documentation: https://git-cliff.org/docs/configuration
+#
+# Conventional Commit Types:
+#   feat:     New features (✨ New Features)
+#   fix:      Bug fixes (🔧 Bug Fixes)
+#   ui/ux:    UI changes (🎨 User Interface)
+#   docs:     Documentation (📖 Documentation)
+#   perf:     Performance (⚡ Performance Improvements)
+#   refactor: Code refactoring (♻️ Code Refactoring)
+#   test:     Tests (skipped)
+#   ci:       CI/CD (skipped)
+#   build:    Build system (skipped)
+#   chore:    Maintenance (🧹 Maintenance)
+#   security: Security fixes (🔒 Security)
+#   revert:   Reverted changes (⏪ Reverted Changes)
+#
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Changelog Output Format
+# -----------------------------------------------------------------------------
+[changelog]
+header = """
+# 📜 Phantom Toolkit - Release History
+
+> A comprehensive changelog for the Phantom Toolkit application.
+> All notable changes to this project are documented here.
+
+"""
+body = """
+{% if version -%}
+## 📦 Release {{ version | trim_start_matches(pat="v") }}
+**Released:** {{ timestamp | date(format="%B %d, %Y") }}
+
+{% else -%}
+## 🚧 Unreleased Changes
+**Status:** Development in progress
+
+{% endif -%}
+{% for group, commits in commits | group_by(attribute="group") %}
+### {{ group | striptags | trim | upper_first }}
+
+{% for commit in commits | unique(attribute="id") %}
+{%- set pr_num = commit.remote.pr_number | default(value=0) -%}
+{%- set short_id = commit.id | truncate(length=7, end="") -%}
+- {{ commit.message | upper_first | trim }}{% if commit.scope %} `[{{ commit.scope }}]`{% endif %} ([{{ short_id }}](https://github.com/2Pz/Phantom-Toolkit/commit/{{ commit.id }})){% if commit.breaking %} ⚠️ **BREAKING CHANGE**{% endif %}
+
+{% endfor %}
+{% endfor %}
+---
+
+"""
+footer = """
+{%- macro repo_url() -%}
+https://github.com/2Pz/Phantom-Toolkit
+{%- endmacro -%}
+
+{% for release in releases -%}
+    {% if release.version -%}
+        {% if release.previous.version -%}
+[{{ release.version | trim_start_matches(pat="v") }}]: {{ self::repo_url() }}/compare/{{ release.previous.version }}..{{ release.version }}
+        {% endif -%}
+    {% else -%}
+[unreleased]: {{ self::repo_url() }}/compare/{{ release.previous.version }}..HEAD
+    {% endif -%}
+{% endfor %}
+"""
+trim = true
+render_always = true
+
+# -----------------------------------------------------------------------------
+# Git Configuration
+# -----------------------------------------------------------------------------
+[git]
+conventional_commits = true
+filter_unconventional = false
+split_commits = false
+# Match both versioned tags (1.x.x) and v-prefixed tags (v1.x.x)
+tag_pattern = "v?[0-9]+\\.[0-9]+\\.[0-9]+"
+
+# -----------------------------------------------------------------------------
+# Commit Preprocessors
+# -----------------------------------------------------------------------------
+# Auto-fix common non-conventional commit formats to conventional format
+commit_preprocessors = [
+  { pattern = "^Fix ", replace = "fix: " },
+  { pattern = "^Add ", replace = "feat: " },
+  { pattern = "^Update ", replace = "chore: " },
+]
+
+# -----------------------------------------------------------------------------
+# Commit Parsers
+# -----------------------------------------------------------------------------
+# Define how commits are categorized into changelog sections
+
+commit_parsers = [
+  # Skip merge commits
+  { message = "^Merge pull request", skip = true },
+  { message = "^Merge branch", skip = true },
+  
+  # Skip CI related commits globally (both [ci] suffix and (ci) scope)
+  { message = "\\[ci\\]", skip = true },
+  { message = "\\(ci\\):", skip = true },
+
+  # Primary categories
+  { message = "^feat", group = "<!-- 0 -->✨ New Features" },
+  { message = "^fix", group = "<!-- 1 -->🔧 Bug Fixes" },
+  
+  # GUI-specific
+  { message = "^ui", group = "<!-- 2 -->🎨 User Interface" },
+  { message = "^ux", group = "<!-- 2 -->🎨 User Interface" },
+  
+  # Documentation
+  { message = "^docs", group = "<!-- 3 -->📖 Documentation" },
+  
+  # Performance & Quality
+  { message = "^perf", group = "<!-- 4 -->⚡ Performance Improvements" },
+  { message = "^refactor", group = "<!-- 5 -->♻️ Code Refactoring" },
+  
+  # Testing & Infrastructure
+  { message = "^test", skip = true },
+  { message = "^ci", skip = true },
+  { message = "^build", skip = true },
+  
+  # Maintenance
+  { message = "^chore\\(release\\)", skip = true },
+  { message = "^🚀 Release", skip = true },
+  { message = "(?i)^Release", skip = true },
+  { message = "^[vV][0-9]+", skip = true },
+  { message = "^Commit", skip = true },
+  { message = "^chore\\(deps\\)", group = "<!-- 8 -->📦 Dependencies" },
+  { message = "^chore", group = "<!-- 9 -->🧹 Maintenance" },
+  
+  # Security & Critical
+  { body = ".*security", group = "<!-- 10 -->🔒 Security" },
+  { message = "^security", group = "<!-- 10 -->🔒 Security" },
+  
+  # Style
+  { message = "^style", skip = true },  # Skip pure style commits
+  
+  # Reverts
+  { message = "^revert", group = "<!-- 11 -->⏪ Reverted Changes" },
+  
+  # Catch-all for weird headers seen in user output
+  { message = "^Commit", skip = true },
+  { message = "^Release", skip = true },
+]
+
+# -----------------------------------------------------------------------------
+# Additional Settings
+# -----------------------------------------------------------------------------
+filter_commits = false
+protect_breaking_commits = true
+
+# -----------------------------------------------------------------------------
+# Link Parsers
+# -----------------------------------------------------------------------------
+# Auto-link issue numbers to GitHub
+link_parsers = [
+  { pattern = "#(\\d+)", href = "https://github.com/2Pz/Phantom-Toolkit/issues/$1" },
+]

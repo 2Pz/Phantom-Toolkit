@@ -1,0 +1,47 @@
+[symbols]
+# AOB-only: provide only what we use.
+
+[symbols.GameDataManPtrAddr]
+pattern = "48 8B 05 ?? ?? ?? ?? 48 85 C0 ?? ?? 48 8B 40 ?? C3"
+offset = "0x0"
+kind = "rip_relative"
+module = "DarkSoulsIII.exe"
+
+[symbols.GameManPtrAddr]
+# CE note: starts with 48 8B ?? rel32. This is typically RIP-relative.
+pattern = "48 8B ?? ?? ?? ?? 04 89 48 28 C3"
+offset = "0x0"
+kind = "rip_relative"
+module = "DarkSoulsIII.exe"
+
+[symbols.WorldChrManPtrAddr]
+pattern = "48 8B 1D ?? ?? ?? 04 48 8B F9 48 85 DB ?? ?? 8B 11 85 D2 ?? ?? 8D"
+offset = "0x0"
+kind = "rip_relative"
+module = "DarkSoulsIII.exe"
+
+[symbols.SaveRequestThreadStart]
+pattern = "48 89 5C 24 08 57 48 83 EC 20 48 8B 05 ?? ?? ?? ?? 0F B6 DA 8B F9 48 83 78 10 00 74 34 E8 ?? ?? ?? ?? 84 C0 75 2B E8 ?? ?? ?? ?? 84 C0 75 22 48 8B 05 ?? ?? ?? ?? 33 C9 85 FF 0F 94 C1 89 88 5C"
+offset = "0x0"
+kind = "absolute"
+module = "DarkSoulsIII.exe"
+
+# DS3 build offsets.toml
+[symbols.EquipGearFunc]
+pattern = "?? 8b f1 ?? 8b d8 ?? 63 ea ?? 8b f9"
+offset = "-0x2B"
+kind = "absolute"
+module = "DarkSoulsIII.exe"
+
+[symbols.EquipGoodsFunc]
+pattern = "?? fa ?? ?? 0f ?? 81 c1 ?? ?? ?? ?? ?? 8b c1 e9"
+offset = "0x0"
+kind = "absolute"
+module = "DarkSoulsIII.exe"
+
+[symbols.ItemGiveFunc]
+pattern = "8B 02 83 F8 06"
+offset = "-0x2F"
+kind = "absolute"
+module = "DarkSoulsIII.exe"
+

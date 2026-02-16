@@ -1,0 +1,20 @@
+{
+  "name": "phantom-toolkit-repo",
+  "private": true,
+  "scripts": {
+    "lint:py": "uv run ruff check .",
+    "lint:ui": "npm --prefix gui run lint",
+    "lint": "npm run lint:py && npm run lint:ui",
+    "format:py": "uv run ruff format .",
+    "format:ui": "npm --prefix gui run format",
+    "format": "npm run format:py && npm run format:ui",
+    "format:check:py": "uv run ruff format --check .",
+    "check:py": "npm run lint:py && npm run format:check:py",
+    "typecheck:ui": "npm --prefix gui run type-check",
+    "check:ui": "npm run lint:ui && npm run typecheck:ui",
+    "dup": "npx --yes jscpd --config jscpd.config.json phantom_backend gui",
+    "check": "npm run check:py && npm run check:ui && npm run dup",
+    "build:ui": "npm --prefix gui run build",
+    "build:desktop": "uv run python scripts/build.py"
+  }
+}

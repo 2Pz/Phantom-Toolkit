@@ -1,0 +1,27 @@
+{
+  "reporters": ["console"],
+  "minLines": 10,
+  "minTokens": 80,
+  "threshold": 5,
+  "ignore": [
+    "**/.git/**",
+    "**/.ruff_cache/**",
+    "**/.venv/**",
+    "**/dist/**",
+    "**/build/**",
+    "**/node_modules/**",
+    "**/gui/dist/**",
+    "**/items/**",
+    "**/*.lock",
+    "**/*.svg",
+    "**/*.png",
+    "**/*.jpg",
+    "**/*.jpeg",
+    "**/*.gif",
+    "**/*.webp",
+    "**/*.ico",
+    "**/*.pdf",
+    "**/*.mp4",
+    "**/*.webm"
+  ]
+}

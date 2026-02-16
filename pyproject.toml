@@ -1,0 +1,75 @@
+[project]
+name = "phantom-toolkit"
+version = "0.0.0"
+description = "Add your description here"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi>=0.115.0",
+  "uvicorn[standard]>=0.30.0",
+  "pydantic>=2.7.0",
+  "pymem>=1.14.0",
+  "psutil>=5.9.0",
+  "pillow>=12.1.0",
+  "mss>=10.1.0",
+  "pywebview>=5.0.0",
+  "qtpy>=2.4.3",
+  "pyside6>=6.10.2",
+  "keyboard>=0.13.5",
+]
+
+[project.scripts]
+phantom-backend = "phantom_backend.api.app:run"
+phantom-selftest = "phantom_backend.cli.selftest:main"
+phantom-apply-build = "phantom_backend.cli.apply_build:main"
+
+[tool.uv]
+package = true
+
+[tool.setuptools]
+packages = ["phantom_backend"]
+
+[dependency-groups]
+dev = [
+    "cffi>=2.0.0",
+    "cx-freeze>=8.5.3",
+    "py7zr>=1.1.0",
+    "pycparser>=3.0",
+    "pyinstaller>=6.18.0",
+    "ruff>=0.15.0",
+]
+
+[tool.ruff.lint]
+select = [
+  "E4",
+  "E7",
+  "E9",
+  "F",
+  "I", # isort
+  "B", # flake8-bugbear
+  "LOG", # flake8-logging
+  "G", # flake8-logging-format
+  "PIE", # flake8-pie
+  "SIM", # flake8-simplify
+  "PLR", # pylint (refactor rules)
+  "T20", # flake8-print
+  "UP", # pyupgrade
+]
+ignore = [
+  # Allow `pass` (more obvious that it's a placeholder)
+  "PIE790",
+  # Allow redundant mode="r" arg for open()
+  "UP015",
+  "B008",
+  # Refactor rules that are too noisy for this codebase right now.
+  "PLR0911", # too-many-return-statements
+  "PLR0912", # too-many-branches
+  "PLR0915", # too-many-statements
+  "PLR2004", # magic-value-comparison
+]
+[tool.ruff.lint.per-file-ignores]
+"build_release.py" = ["T201"]
+"test_stats.py" = ["T201"]
+"phantom_backend/cli/*.py" = ["T201"]
+"scripts/*.py" = ["T201"]

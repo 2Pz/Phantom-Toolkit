@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+.venv/
+.ruff_cache/
+*.exe
+
+# Frontend / Node
+node_modules/
+gui/dist/
+gui/node_modules/
+*.tsbuildinfo
+
+# OS / IDE
+.vscode/
+.DS_Store
+*.code-workspace
+error_log.txt
+
+# Item assets (large images/CSVs)
+# We ignore everything inside items/ except the folder structure or README
+items/ds3/**
+items/eldenring/**
+
+# AppImage tooling (downloaded/extracted locally)
+packaging/appimage/appimagetool*
+packaging/appimage/squashfs-root/
+packaging/appimage/build/
+
