@@ -425,7 +425,73 @@ def _run_save_file_dialog(
     )
 
 
-def _resize_png_bytes(png_bytes: bytes, *, max_width: int = 1280) -> bytes:
+def _get_linux_primary_monitor_geometry() -> tuple[int, int, int, int] | None:
+    """Detect primary monitor geometry (x, y, width, height) on Linux."""
+    # 1. Try kscreen-doctor (KDE)
+    if _which("kscreen-doctor"):
+        try:
+            result = subprocess.run(
+                ["kscreen-doctor", "-o"],
+                capture_output=True,
+                text=True,
+                timeout=3,
+                env=_child_env(),
+            )
+            if result.returncode == 0:
+                lines = result.stdout.splitlines()
+                # Find which output has priority 1
+                for i, line in enumerate(lines):
+                    if "priority 1" in line:
+                        # Look for Geometry in nearby lines (usually the next line)
+                        for j in range(max(0, i - 5), min(len(lines), i + 5)):
+                            if "Geometry:" in lines[j]:
+                                # Format: "Geometry: 1920,0 2560x1440"
+                                parts = lines[j].split("Geometry:")[1].strip().split()
+                                pos_parts = parts[0].split(",")
+                                size_parts = parts[1].split("x")
+                                return (
+                                    int(pos_parts[0]),
+                                    int(pos_parts[1]),
+                                    int(size_parts[0]),
+                                    int(size_parts[1]),
+                                )
+        except Exception:
+            pass
+
+    # 2. Try xrandr (X11)
+    if _which("xrandr"):
+        try:
+            result = subprocess.run(
+                ["xrandr", "--query"],
+                capture_output=True,
+                text=True,
+                timeout=3,
+                env=_child_env(),
+            )
+            if result.returncode == 0:
+                # Look for " primary " in the output
+                import re
+
+                for line in result.stdout.splitlines():
+                    if " primary " in line:
+                        # Format: "DP-3 connected primary 2560x1440+1920+0 ..."
+                        # match 2560x1440+1920+0
+                        m = re.search(r"(\d+)x(\d+)\+(-?\d+)\+(-?\d+)", line)
+                        if m:
+                            w, h, x, y = map(int, m.groups())
+                            return x, y, w, h
+        except Exception:
+            pass
+
+    return None
+
+
+def _resize_png_bytes(
+    png_bytes: bytes,
+    *,
+    max_width: int = 1280,
+    geom: tuple[int, int, int, int] | None = None,
+) -> bytes:
     # Keep this optional so the bridge can still work if PIL isn't available.
     try:
         from io import BytesIO
@@ -433,6 +499,20 @@ def _resize_png_bytes(png_bytes: bytes, *, max_width: int = 1280) -> bytes:
         from PIL import Image
 
         img = Image.open(BytesIO(png_bytes))
+
+        # Check if we need to crop to a specific monitor
+        if geom:
+            x, y, w, h = geom
+            img_w, img_h = img.size
+            # Image.crop uses (left, top, right, bottom)
+            # Ensure coordinates are within image bounds
+            left = max(0, min(x, img_w))
+            top = max(0, min(y, img_h))
+            right = max(left, min(x + w, img_w))
+            bottom = max(top, min(y + h, img_h))
+            if right > left and bottom > top:
+                img = img.crop((left, top, right, bottom))
+
         w, h = img.size
         if w > max_width and w > 0:
             ratio = max_width / w
@@ -444,7 +524,9 @@ def _resize_png_bytes(png_bytes: bytes, *, max_width: int = 1280) -> bytes:
         return png_bytes
 
 
-def _try_screenshot_cmd(cmd: list[str], out_file: str) -> bytes | None:
+def _try_screenshot_cmd(
+    cmd: list[str], out_file: str, geom: tuple[int, int, int, int] | None = None
+) -> bytes | None:
     try:
         subprocess.run(
             cmd, capture_output=True, timeout=15, check=True, env=_child_env()
@@ -458,7 +540,7 @@ def _try_screenshot_cmd(cmd: list[str], out_file: str) -> bytes | None:
         if os.path.exists(out_file) and os.path.getsize(out_file) > 0:
             with open(out_file, "rb") as f:
                 data = f.read()
-            return _resize_png_bytes(data, max_width=1280)
+            return _resize_png_bytes(data, max_width=1280, geom=geom)
     except Exception:
         return None
     finally:
@@ -476,6 +558,7 @@ def _capture_screenshot_png() -> bytes | None:
     #   (commonly returns tiny/black PNGs).
     # - X11: prefer Spectacle, then scrot, then Qt fallback.
     wayland = _is_wayland()
+    geom = _get_linux_primary_monitor_geometry()
 
     fd, tmp_path = tempfile.mkstemp(prefix="phantom_host_ss_", suffix=".png")
     os.close(fd)
@@ -495,21 +578,21 @@ def _capture_screenshot_png() -> bytes | None:
                 ],
             ]
             for cmd in spectacle_cmds:
-                data = _try_screenshot_cmd(cmd, tmp_path)
+                data = _try_screenshot_cmd(cmd, tmp_path, geom=geom)
                 if data:
                     _set_last_capture(method="spectacle", size_bytes=len(data))
                     return data
 
         # 1b) grim (generic Wayland) - common on wlroots-based compositors.
         if wayland and _which("grim"):
-            data = _try_screenshot_cmd(["grim", tmp_path], tmp_path)
+            data = _try_screenshot_cmd(["grim", tmp_path], tmp_path, geom=geom)
             if data:
                 _set_last_capture(method="grim", size_bytes=len(data))
                 return data
 
         # 2) scrot (X11)
         if not wayland and _which("scrot"):
-            data = _try_screenshot_cmd(["scrot", tmp_path], tmp_path)
+            data = _try_screenshot_cmd(["scrot", tmp_path], tmp_path, geom=geom)
             if data:
                 _set_last_capture(method="scrot", size_bytes=len(data))
                 return data
@@ -523,7 +606,7 @@ def _capture_screenshot_png() -> bytes | None:
 
         # 4) Qt fallback (X11 only).
         if not wayland:
-            data = _qt_capture_screenshot_png()
+            data = _qt_capture_screenshot_png(geom=geom)
             if data:
                 _set_last_capture(method="qt", size_bytes=len(data))
                 return data
@@ -546,7 +629,9 @@ def _capture_screenshot_png() -> bytes | None:
             pass
 
 
-def _qt_capture_screenshot_png() -> bytes | None:
+def _qt_capture_screenshot_png(
+    geom: tuple[int, int, int, int] | None = None,
+) -> bytes | None:
     def _inner():
         try:
             from PySide6.QtCore import QBuffer, QByteArray
@@ -570,7 +655,7 @@ def _qt_capture_screenshot_png() -> bytes | None:
             raw = bytes(ba)
             if len(raw) < 6000:
                 return None
-            out = _resize_png_bytes(raw, max_width=1280)
+            out = _resize_png_bytes(raw, max_width=1280, geom=geom)
             if len(out) < 6000:
                 return None
             return out
