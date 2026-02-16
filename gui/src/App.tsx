@@ -575,12 +575,6 @@ const App: React.FC = () => {
       ? { ...item, count: item.count ?? 99 }
       : { ...item };
 
-    // Equip directly
-    setLocalBuild(prev => ({
-      ...prev,
-      slots: { ...prev.slots, [selectedSlot]: newItem }
-    }));
-
     // Keep it as pending to allow customization (upgrades, etc.)
     setPendingItem(newItem);
     setSearchQuery('');
@@ -907,65 +901,14 @@ const App: React.FC = () => {
                 slots={viewedBuild.slots}
                 selectedSlot={selectedSlot}
                 game={selectedGame}
-                onSelectSlot={(id) => { setSelectedSlot(id); setSearchQuery(''); }}
+                onSelectSlot={(id) => { setSelectedSlot(id); setSearchQuery(''); setPendingItem(null); }}
               />
             </section >
 
             <aside className="w-[420px] shrink-0 flex flex-col border-l border-[#2a2a2a] bg-black/40">
-              <div className="p-4 bg-black/60 border-b border-[#2a2a2a]">
-                <div className="flex justify-between items-center mb-4">
-                  <h3 className="fantasy-font text-[#bfa571] uppercase tracking-widest text-sm">
-                    {selectedSlot ? selectedSlot.replace(/_/g, ' ') : 'Select a Slot'}
-                  </h3>
-                  {selectedSlot && (viewedName === localName || viewedName === '') && (
-                    <button onClick={() => handleClearSlot(selectedSlot)} className="text-[10px] uppercase text-gray-500 hover:text-white transition-colors border border-white/10 px-2 py-1">Clear Slot</button>
-                  )}
-                </div>
-                <input
-                  type="text"
-                  placeholder={viewedName === localName || viewedName === '' ? "SEARCH ITEM..." : "READ ONLY MODE"}
-                  disabled={viewedName !== localName && viewedName !== ''}
-                  className={`w-full search-input py-2 px-4 text-xs tracking-widest uppercase fantasy-font bg-white/5 border border-white/10 outline-none focus:border-[#bfa571] transition-colors ${viewedName !== localName && viewedName !== '' ? 'opacity-50 cursor-not-allowed' : ''}`}
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                />
-              </div>
-
-              <div className="flex-1 overflow-y-auto p-3 custom-scrollbar">
-                {isSearching ? (
-                  <div className="h-full flex flex-col items-center justify-center opacity-50">
-                    <p className="text-xs fantasy-font uppercase tracking-widest">Searching...</p>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-5 gap-1.5">
-                    {searchResults.map((item) => {
-                      const isSelectedInSlot = currentSelectedItem?.id === item.id;
-                      return (
-                        <div
-                          key={item.id}
-                          onClick={() => (viewedName === localName || viewedName === '') && handleSelectItem(item)}
-                          className={`aspect-square soulslike-slot flex items-center justify-center transition-all relative ${isSelectedInSlot ? 'item-glow active' : ''} ${(viewedName === localName || viewedName === '') ? 'cursor-pointer hover:selected-highlight' : 'opacity-80 cursor-default'}`}
-                          title={item.name}
-                        >
-                          {item.image ? (
-                            <img src={item.image} alt={item.name} className={`w-[85%] h-[85%] object-contain p-1 transition-all ${isSelectedInSlot ? 'scale-110' : ''}`} />
-                          ) : (
-                            <span className="text-[9px] text-center text-gray-500">{item.name}</span>
-                          )}
-                        </div>
-                      );
-                    })}
-                    {searchResults.length === 0 && searchQuery && (
-                      <div className="col-span-5 text-center mt-10 opacity-50 text-xs text-gray-400">
-                        NO ITEMS FOUND
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              <div className="h-auto shrink-0 border-t border-[#2a2a2a] bg-black/60 p-4">
-                {configItem ? (
+              {/* TOP: Configuration Panel (if pending or configuring equipped) */}
+              {(configItem) && (
+                <div className="h-auto shrink-0 border-b border-[#2a2a2a] bg-black/60 p-4">
                   <div className="flex flex-col gap-4">
                     {/* Configuration / Preview Header */}
                     <div className="flex gap-4">
@@ -1034,6 +977,23 @@ const App: React.FC = () => {
                             </div>
                           </div>
                         )}
+
+                        <div className="flex gap-2 w-full mt-2">
+                          <button
+                            onClick={handleConfirmEquip}
+                            className="flex-1 py-2 bg-[#bfa571] text-black fantasy-font uppercase tracking-widest text-xs font-bold hover:brightness-110"
+                          >
+                            Confirm & Equip
+                          </button>
+                          <button
+                            onClick={() => {
+                              setPendingItem(null);
+                            }}
+                            className="flex-1 py-2 bg-white/10 text-gray-300 fantasy-font uppercase tracking-widest text-xs font-bold hover:bg-white/20"
+                          >
+                            Dismiss
+                          </button>
+                        </div>
                       </>
                     ) : (
                       /* Edit Button for Equipped Items */
@@ -1047,48 +1007,59 @@ const App: React.FC = () => {
                       )
                     )}
 
-                    {/* Confirm / Cancel Buttons for Pending Item */}
-                    {pendingItem && (
-                      <div className="flex gap-2 w-full mt-2">
-                        {/* Only show Confirm button for Weapons/Shields if they have potential for complex config, 
-                            otherwise selection is already direct. Users want it removed for others. */}
-                        {(configItem.type.toLowerCase().includes('weapon') || configItem.type.toLowerCase().includes('shield')) ? (
-                          <button
-                            onClick={handleConfirmEquip}
-                            className="flex-1 py-2 bg-[#bfa571] text-black fantasy-font uppercase tracking-widest text-xs font-bold hover:brightness-110"
-                          >
-                            Confirm & Equip
-                          </button>
-                        ) : (
-                          /* For others, selection is enough, we just provide a way to close the configuration panel */
-                          <button
-                            onClick={() => {
-                              setPendingItem(null);
-                              setSearchQuery('');
-                            }}
-                            className="flex-1 py-2 bg-[#bfa571]/20 text-[#bfa571] border border-[#bfa571]/50 fantasy-font uppercase tracking-widest text-xs font-bold hover:bg-[#bfa571]/30"
-                          >
-                            Close Adjustments
-                          </button>
-                        )}
-                        <button
-                          onClick={() => {
-                            // Cancel: if we were just selecting, unequip. If editing existing, this is weird.
-                            // But usually users just want to get back to search or list.
-                            setPendingItem(null);
-                          }}
-                          className="flex-1 py-2 bg-white/10 text-gray-300 fantasy-font uppercase tracking-widest text-xs font-bold hover:bg-white/20"
-                        >
-                          Dismiss
-                        </button>
-                      </div>
-                    )}
+                    {!pendingItem && <p className="text-xs text-gray-400 italic leading-relaxed max-h-20 overflow-y-auto">{configItem.description}</p>}
+                  </div>
+                </div>
+              )}
 
-                    {!pendingItem && <p className="text-xs text-gray-400 italic leading-relaxed">{configItem.description}</p>}
+              <div className="p-4 bg-black/60 border-b border-[#2a2a2a]">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="fantasy-font text-[#bfa571] uppercase tracking-widest text-sm">
+                    {selectedSlot ? selectedSlot.replace(/_/g, ' ') : 'Select a Slot'}
+                  </h3>
+                  {selectedSlot && (viewedName === localName || viewedName === '') && (
+                    <button onClick={() => handleClearSlot(selectedSlot)} className="text-[10px] uppercase text-gray-500 hover:text-white transition-colors border border-white/10 px-2 py-1">Clear Slot</button>
+                  )}
+                </div>
+                <input
+                  type="text"
+                  placeholder={viewedName === localName || viewedName === '' ? "SEARCH ITEM..." : "READ ONLY MODE"}
+                  disabled={viewedName !== localName && viewedName !== ''}
+                  className={`w-full search-input py-2 px-4 text-xs tracking-widest uppercase fantasy-font bg-white/5 border border-white/10 outline-none focus:border-[#bfa571] transition-colors ${viewedName !== localName && viewedName !== '' ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-3 custom-scrollbar">
+                {isSearching ? (
+                  <div className="h-full flex flex-col items-center justify-center opacity-50">
+                    <p className="text-xs fantasy-font uppercase tracking-widest">Searching...</p>
                   </div>
                 ) : (
-                  <div className="h-full flex flex-col items-center justify-center opacity-30 py-8">
-                    <p className="text-xs fantasy-font uppercase tracking-widest">No item selected</p>
+                  <div className="grid grid-cols-5 gap-1.5">
+                    {searchResults.map((item) => {
+                      const isSelectedInSlot = currentSelectedItem?.id === item.id;
+                      return (
+                        <div
+                          key={item.id}
+                          onClick={() => (viewedName === localName || viewedName === '') && handleSelectItem(item)}
+                          className={`aspect-square soulslike-slot flex items-center justify-center transition-all relative ${isSelectedInSlot ? 'item-glow active' : ''} ${(viewedName === localName || viewedName === '') ? 'cursor-pointer hover:selected-highlight' : 'opacity-80 cursor-default'}`}
+                          title={item.name}
+                        >
+                          {item.image ? (
+                            <img src={item.image} alt={item.name} className={`w-[85%] h-[85%] object-contain p-1 transition-all ${isSelectedInSlot ? 'scale-110' : ''}`} />
+                          ) : (
+                            <span className="text-[9px] text-center text-gray-500">{item.name}</span>
+                          )}
+                        </div>
+                      );
+                    })}
+                    {searchResults.length === 0 && searchQuery && (
+                      <div className="col-span-5 text-center mt-10 opacity-50 text-xs text-gray-400">
+                        NO ITEMS FOUND
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
