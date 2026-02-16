@@ -3,7 +3,7 @@
 [![](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 [![](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-A toolkit for Elden Ring and Dark Souls III that provides build creation, stat editing, inventory management, session modifiers, and technical fixes like infinite loading screens.
+This is a toolkit for Elden Ring and Dark Souls III. It provides build creation and stat editing, as well as character build creation and save backup.
 
 ## Installation
 
