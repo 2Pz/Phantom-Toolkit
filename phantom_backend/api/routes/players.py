@@ -29,6 +29,7 @@ SLOT_CSV_MAP = {
     "magic": ["Spells.csv"],
     "spell": ["Spells.csv"],
     "quick": ["QuickItems.csv"],
+    "physick": ["PhysickTears.csv"],
 }
 
 

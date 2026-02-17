@@ -29,6 +29,7 @@ function getTypeForBackendKey(beKey: string): SlotType {
     if (key.includes('magic') || key.includes('spell')) return SlotType.SPELL;
     if (key.includes('quick_item') || key.includes('quick_')) return SlotType.QUICK_ITEM;
     if (key.includes('covenant')) return SlotType.COVENANT;
+    if (key.includes('physick')) return SlotType.PHYSICK;
     return SlotType.WEAPON_R;
 }
 
@@ -50,6 +51,8 @@ function buildFrontendToBackendSlotMapping(game: GameType): Record<string, strin
         chest: 'armor',
         hands: 'gauntlet',
         legs: 'leggings',
+        physick_tear_1: 'physick_tear_1',
+        physick_tear_2: 'physick_tear_2',
     };
 
     if (game === 'DARK_SOULS_3') {
@@ -350,6 +353,9 @@ export async function getPlayers(game: GameType): Promise<PlayerData[]> {
                     mapSlot("accessory_2", "talisman_2");
                     mapSlot("accessory_3", "talisman_3");
                     mapSlot("accessory_4", "talisman_4");
+                    // Physick Tears
+                    mapSlot("physick_tear_1", "physick_tear_1");
+                    mapSlot("physick_tear_2", "physick_tear_2");
                 }
 
                 // Quick Items
@@ -725,6 +731,8 @@ export function mapBackendToFrontendSlots(game: GameType, backendEq: Record<stri
     mapSlot("armor", "chest");
     mapSlot("gauntlet", "hands");
     mapSlot("leggings", "legs");
+    mapSlot("physick_tear_1", "physick_tear_1");
+    mapSlot("physick_tear_2", "physick_tear_2");
 
     if (game === 'DARK_SOULS_3') {
         // Legacy support
