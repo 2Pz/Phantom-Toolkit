@@ -151,6 +151,16 @@ const EquipmentGrid: React.FC<EquipmentGridProps> = ({ slots, selectedSlot, onSe
         {[6, 7, 8, 9, 10].map(i => renderSlot(`quick_2_${i}`, SlotType.QUICK_ITEM))}
       </div>
 
+      <div className="flex gap-4 mt-6 items-center">
+        <div className="h-px w-8 bg-white/10" />
+        <h4 className="text-[10px] fantasy-font text-gray-500 uppercase tracking-[0.3em]">Wondrous Physick Mix</h4>
+        <div className="h-px w-8 bg-white/10" />
+      </div>
+      <div className="flex gap-2 justify-center">
+        {renderSlot('physick_tear_1', SlotType.PHYSICK)}
+        {renderSlot('physick_tear_2', SlotType.PHYSICK)}
+      </div>
+
       {/* Spells Grid (Moved below Quick Items) */}
       {renderSpells()}
     </div>
