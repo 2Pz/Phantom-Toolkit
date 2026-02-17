@@ -375,7 +375,6 @@ function getCategoryForSlot(game: GameType, slotId: string): string | undefined 
   else if (s === 'covenant') type = 'COVENANT';
   else if (s.startsWith('quick')) type = 'QUICK_ITEM';
   else if (s.startsWith('spell')) type = 'SPELL';
-  else if (s.startsWith('physick')) type = 'PHYSICK';
 
   return type ? mapping[type] : undefined;
 }

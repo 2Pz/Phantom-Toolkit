@@ -129,8 +129,6 @@ class EquipApplyService:
                 "quick_item_8": 29,
                 "quick_item_9": 30,
                 "quick_item_10": 31,
-                "physick_tear_1": 32,
-                "physick_tear_2": 33,
             }
 
             def _inventory_list() -> int:
@@ -363,27 +361,6 @@ class EquipApplyService:
                     self._mem.write_u32(equip_data + 0x10, 0xFFFFFFFF)
                     tail = 0
 
-                if slot == 32:
-                    val = 0xFFFFFFFF
-                    if idx != -1:
-                        inv = _inventory_list()
-                        val = self._mem.read_u32(
-                            inv + idx * lay.inv_entry_size + lay.inv_id_off
-                        )
-
-                    self._mem.write_u32(equip_game_data + 0x3E4, val)
-                    return
-                elif slot == 33:
-                    val = 0xFFFFFFFF
-                    if idx != -1:
-                        inv = _inventory_list()
-                        val = self._mem.read_u32(
-                            inv + idx * lay.inv_entry_size + lay.inv_id_off
-                        )
-
-                    self._mem.write_u32(equip_game_data + 0x3E8, val)
-                    return
-
                 final_idx = (idx + tail) if idx != -1 else -1
 
                 if slot <= 21:
@@ -566,8 +543,6 @@ class EquipApplyService:
                     base_id = item_id & 0x0FFFFFFF
                     # Try direct goods equip first, then fallback to group handling.
                     full = GOODS | base_id
-                elif 32 <= slot <= 33:
-                    full = GOODS | (item_id & 0x0FFFFFFF)
                 else:
                     full = item_id & 0xFFFFFFFF
 

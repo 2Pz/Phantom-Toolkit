@@ -12,8 +12,7 @@ export enum SlotType {
   TALISMAN = 'TALISMAN',
   QUICK_ITEM = 'QUICK_ITEM',
   COVENANT = 'COVENANT',
-  SPELL = 'SPELL',
-  PHYSICK = 'PHYSICK'
+  SPELL = 'SPELL'
 }
 
 export type GameType = 'ELDEN_RING' | 'DARK_SOULS_3';

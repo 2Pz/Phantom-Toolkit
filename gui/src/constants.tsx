@@ -102,13 +102,6 @@ export const SLOT_ICONS: Record<string, React.ReactNode> = {
       <rect x="25" y="15" width="50" height="70" rx="2" />
       <path d="M30,30 H70 M30,50 H70 M30,70 H60" stroke="black" strokeWidth="2" opacity="0.4" />
     </svg>
-  ),
-  PHYSICK: (
-    <svg className="w-12 h-12 opacity-25" viewBox="0 0 100 100" fill="currentColor">
-      {/* Tear / Flask Mixed silhouette */}
-      <path d="M50,15 C50,15 30,40 30,65 C30,85 40,90 50,90 C60,90 70,85 70,65 C70,40 50,15 50,15 Z" />
-      <circle cx="50" cy="65" r="10" fill="black" opacity="0.3" />
-    </svg>
   )
 };
 
@@ -126,8 +119,7 @@ export const SLOT_CSV_MAPPING: Record<GameType, Record<string, string>> = {
     QUICK_ITEM: 'QuickItems.csv',
     SPELL: 'Spells.csv',
     RING: 'Talismans.csv',
-    COVENANT: 'Talismans.csv', // Fallback
-    PHYSICK: 'PhysickTears.csv'
+    COVENANT: 'Talismans.csv' // Fallback
   },
   DARK_SOULS_3: {
     WEAPON_R: 'Weapons.csv',
