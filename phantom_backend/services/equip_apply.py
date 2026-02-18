@@ -129,6 +129,8 @@ class EquipApplyService:
                 "quick_item_8": 29,
                 "quick_item_9": 30,
                 "quick_item_10": 31,
+                "physick_tear_1": 32,
+                "physick_tear_2": 33,
             }
 
             def _inventory_list() -> int:
@@ -143,18 +145,53 @@ class EquipApplyService:
                     return 0
 
             def _get_item_idx(item_id: int) -> int | None:
-                inv = _inventory_list()
-                if not inv:
-                    return None
+                # Inventory lists to scan: Main (0x10) and Key Items (0x20)
+                inv_lists = []
+
+                main_inv = _inventory_list()
+                if main_inv:
+                    inv_lists.append(main_inv)
+                # Scan Main (0x10) and Key Items (0x20)
+                # Note: The returned index is ambiguous if we don't know which list it came from.
+                # However, for simple "Check Existence" checks, this is sufficient.
+                # _equip_slot IS NOT SAFE to use with indices from the secondary list!
+
+                offsets = [
+                    lay.inventory_list_off,
+                    lay.inventory_list_off + 0x10,
+                ]  # 0x10, 0x20
+
+                inv_entry_size = lay.inv_entry_size
+                inv_id_off = lay.inv_id_off
+
                 want = item_id & 0xFFFFFFFF
-                for i in range(2688):
-                    cur = self._mem.read_i32(
-                        inv + i * lay.inv_entry_size + lay.inv_id_off
-                    )
-                    if cur != -1:
-                        cur &= 0xFFFFFFFF
-                    if (cur & 0xFFFFFFFF) == want:
-                        return i
+                want_base = want & 0x0FFFFFFF
+                is_goods = (want & 0xF0000000) == 0x40000000
+
+                for off in offsets:
+                    try:
+                        inv = self._mem.read_ptr(equip_inventory_data + off)
+                    except Exception:
+                        continue
+
+                    if not inv:
+                        continue
+
+                    for i in range(2688):
+                        cur_raw = self._mem.read_i32(
+                            inv + i * inv_entry_size + inv_id_off
+                        )
+                        if cur_raw == -1:
+                            continue
+
+                        cur = cur_raw & 0xFFFFFFFF
+                        if cur == want:
+                            return i
+
+                        # Fuzzy match for GOODS
+                        if is_goods and (cur & 0x0FFFFFFF) == want_base:
+                            return i
+
                 return None
 
             def _get_item_indices(item_id: int) -> list[int]:
@@ -361,6 +398,27 @@ class EquipApplyService:
                     self._mem.write_u32(equip_data + 0x10, 0xFFFFFFFF)
                     tail = 0
 
+                if slot == 32:
+                    val = 0xFFFFFFFF
+                    if idx != -1:
+                        inv = _inventory_list()
+                        val = self._mem.read_u32(
+                            inv + idx * lay.inv_entry_size + lay.inv_id_off
+                        )
+
+                    self._mem.write_u32(equip_game_data + 0x3E4, val)
+                    return
+                elif slot == 33:
+                    val = 0xFFFFFFFF
+                    if idx != -1:
+                        inv = _inventory_list()
+                        val = self._mem.read_u32(
+                            inv + idx * lay.inv_entry_size + lay.inv_id_off
+                        )
+
+                    self._mem.write_u32(equip_game_data + 0x3E8, val)
+                    return
+
                 final_idx = (idx + tail) if idx != -1 else -1
 
                 if slot <= 21:
@@ -514,6 +572,11 @@ class EquipApplyService:
             ) -> bool:
                 # Unequip / empty
                 if item_id in (-1, 0x0FFFFFFF, 0xFFFFFFFF):
+                    if 32 <= slot <= 33:
+                        # Direct write unequip for Physick
+                        offset = 0x3E4 + (slot - 32) * 4
+                        self._mem.write_u32(equip_game_data + offset, 0xFFFFFFFF)
+                        return True
                     _equip_slot(slot, -1)
                     return True
 
@@ -543,8 +606,30 @@ class EquipApplyService:
                     base_id = item_id & 0x0FFFFFFF
                     # Try direct goods equip first, then fallback to group handling.
                     full = GOODS | base_id
+                elif 32 <= slot <= 33:
+                    full = GOODS | (item_id & 0x0FFFFFFF)
                 else:
                     full = item_id & 0xFFFFFFFF
+
+                # Physick Slot Special Handling (32, 33)
+                if 32 <= slot <= 33:
+                    # 0. Ensure user has the Flask of Wondrous Physick (ID 250, Category GOODS)
+                    # ID 250 | GOODS = 0x400000FA
+                    flask_id = 0x400000FA
+                    if _get_item_idx(flask_id) is None:
+                        _give_item(flask_id, quantity=1)
+
+                    # 1. Ensure we have the Tear (scanning all lists)
+                    idx = _get_item_idx(full)
+                    if idx is None:
+                        # Give strict quantity=1
+                        idx = _give_item(full, quantity=1)
+
+                    # 2. Direct Write ID (Bypassing _equip_slot to avoid List Pointer issues)
+                    # Use 'full' which has the correct ID + GOODS flag.
+                    offset = 0x3E4 + (slot - 32) * 4
+                    self._mem.write_u32(equip_game_data + offset, full & 0xFFFFFFFF)
+                    return True
 
                 # For weapon-like slots, we must ensure a distinct inventory entry per slot when duplicates exist.
                 if 0 <= slot <= 11:

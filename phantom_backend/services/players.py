@@ -225,6 +225,26 @@ class PlayerService:
                 gdm_ptr_addr = self._resolver.resolve("GameDataManPtrAddr").address
                 gdm = self._mem.read_ptr(gdm_ptr_addr)
                 player_data = self._mem.read_ptr(gdm + player_game_data_off)
+
+                # Wondrous Physick slots from EquipGameData (offset +0x2B0 from PlayerGameData)
+                # Slot 1: +0x2B0 + 0x3E4 = +0x694
+                # Slot 2: +0x2B0 + 0x3E8 = +0x698
+                try:
+                    addr1 = player_data + 0x694
+                    p1 = self._mem.read_u32(addr1)
+                    addr2 = player_data + 0x698
+                    p2 = self._mem.read_u32(addr2)
+
+                    st.equipment["physick_tear_1"] = (
+                        int(p1 & 0x0FFFFFFF) if p1 != 0xFFFFFFFF else -1
+                    )
+                    st.equipment["physick_tear_2"] = (
+                        int(p2 & 0x0FFFFFFF) if p2 != 0xFFFFFFFF else -1
+                    )
+                except Exception:
+                    # Silently fail for optional Physick read
+                    pass
+
                 qio = cfg.get("equipment", {}).get("quick_item_offsets", {})
                 for slot in range(1, 11):
                     key = f"slot_{slot}"
@@ -232,6 +252,7 @@ class PlayerService:
                         continue
                     off = int(str(qio[key]), 16)
                     qid = self._mem.read_u32(player_data + off) & 0x0FFFFFFF
+                    st.equipment[f"quick_item_{slot}"] = int(qid)
                     st.equipment[f"quick_item_{slot}"] = int(qid)
             except Exception:
                 pass
