@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { Item } from './types';
 import type { Build, GameType, StatusState, PlayerData } from './types';
 import { SLOT_CSV_MAPPING } from './constants';
@@ -384,6 +384,7 @@ const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'main' | 'build' | 'toolkit' | 'backup'>('main');
   const [selectedGame, setSelectedGame] = useState<GameType>('ELDEN_RING');
   const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
+  const [hoveredSlot, setHoveredSlot] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [loadWithStats, setLoadWithStats] = useState(true);
   const [language, setLanguage] = useState('en');
@@ -532,19 +533,34 @@ const App: React.FC = () => {
   };
 
   const handleInspect = (player: PlayerData) => {
-    setViewedName(player.name);
-    setInspectedPlayer(player);
+    if (player.isLocal) {
+      // If inspecting self, reset to local view state (editable)
+      setViewedName(localName);
+      setInspectedPlayer(null); // Clear inspected player so we fall back to local state
+    } else {
+      setViewedName(player.name);
+      setInspectedPlayer(player);
+    }
     setActiveTab('build');
   };
 
   const handleCopyBuild = () => {
     setLocalStatus(viewedStatus);
     setLocalBuild({ ...viewedBuild, id: 'local-build', name: 'Imported Build' });
-    setViewedName('');
+    if (viewedName !== localName) {
+      // If we copied a build, we probably want to edit it now? 
+      // But let's keep it simple: just copy data to local state.
+      // User can switch to local view to see it.
+      // Or we can switch them:
+      // setViewedName(localName);
+      // setInspectedPlayer(null);
+    }
   };
 
+  const isLocalView = viewedName === localName || viewedName === '' || (inspectedPlayer?.isLocal ?? false);
+
   const handleStatusChange = (path: string, value: string | number | boolean) => {
-    if (viewedName !== localName && viewedName !== '') return;
+    if (!isLocalView) return;
     const newStatus = { ...localStatus, [path]: value };
     setLocalStatus(newStatus);
     // Fire and forget write (debounce would be better for prod but this is local)
@@ -552,7 +568,7 @@ const App: React.FC = () => {
   };
 
   const handleAttributeChange = (name: string, value: number) => {
-    if (viewedName !== localName && viewedName !== '') return;
+    if (!isLocalView) return;
     const newStatus = {
       ...localStatus,
       attributes: { ...localStatus.attributes, [name]: value }
@@ -568,7 +584,7 @@ const App: React.FC = () => {
   };
 
   const handleSelectItem = (item: Item) => {
-    if (!selectedSlot || (viewedName !== '' && viewedName.toLowerCase().trim() !== localName.toLowerCase().trim())) return;
+    if (!selectedSlot || !isLocalView) return;
 
     // Only ammo gets a safe default count; quick items default to "keep current quantity"
     // unless the user explicitly adjusts the slider (sets `count`).
@@ -750,8 +766,8 @@ const App: React.FC = () => {
 
   const configItem = pendingItem || currentSelectedItem;
 
-  const handleClearSlot = (feKey: string) => {
-    if ((viewedName !== '' && viewedName.toLowerCase().trim() !== localName.toLowerCase().trim())) return;
+  const handleClearSlot = useCallback((feKey: string) => {
+    if (!isLocalView) return;
     setLocalBuild(prev => ({
       ...prev,
       slots: { ...prev.slots, [feKey]: null }
@@ -759,7 +775,7 @@ const App: React.FC = () => {
     if (feKey === 'covenant') {
       setLocalStatus(prev => ({ ...prev, covenant: '-' }));
     }
-  };
+  }, [isLocalView]);
 
   const handleConfirmEquip = () => {
     if (!pendingItem || !selectedSlot) return;
@@ -772,6 +788,27 @@ const App: React.FC = () => {
     // Optionally switch focus?
     setActiveTab('build'); // Ensure we are here.
   };
+
+  // Listen for "R" key to clear slot
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ignore if typing in an input
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+
+      if (activeTab === 'build' && isLocalView) {
+        if (e.code === 'KeyR') {
+          if (hoveredSlot) {
+            handleClearSlot(hoveredSlot);
+          } else if (selectedSlot) {
+            handleClearSlot(selectedSlot);
+          }
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [activeTab, isLocalView, selectedSlot, hoveredSlot, handleClearSlot]); // Dependencies for closure freshness
 
   return (
     <div className="min-h-screen textured-bg flex flex-col overflow-hidden">
@@ -818,7 +855,7 @@ const App: React.FC = () => {
             game={selectedGame}
             onStatusChange={handleStatusChange}
             onAttributeChange={handleAttributeChange}
-            isReadOnly={viewedName !== localName && viewedName !== ''}
+            isReadOnly={!isLocalView}
             onCopy={handleCopyBuild}
           />
         </aside>
@@ -846,12 +883,12 @@ const App: React.FC = () => {
             <section className="flex-1 flex flex-col items-center justify-center p-8 overflow-y-auto custom-scrollbar">
               <div className="mb-6 w-full max-w-2xl flex flex-col items-center">
                 <h2 className="text-xl fantasy-font text-[#bfa571] uppercase tracking-widest text-center">
-                  {viewedName === localName || viewedName === '' ? 'Equipment' : `${viewedName}'s Build`}
+                  {isLocalView ? 'Equipment' : `${viewedName}'s Build`}
                 </h2 >
                 <div className="status-header-line w-64 mx-auto"></div>
 
                 {
-                  (viewedName === localName || viewedName === '') && (
+                  (isLocalView) && (
                     <div className="flex flex-col items-center gap-4 mt-2 mb-4 bg-black/20 p-4 border border-white/5 rounded backdrop-blur-sm">
                       <div className="flex items-center gap-4">
                         <button
@@ -901,6 +938,7 @@ const App: React.FC = () => {
               <EquipmentGrid
                 slots={viewedBuild.slots}
                 selectedSlot={selectedSlot}
+                onHoverSlot={setHoveredSlot}
                 game={selectedGame}
                 onSelectSlot={(id) => { setSelectedSlot(id); setSearchQuery(''); setPendingItem(null); }}
               />
@@ -998,7 +1036,7 @@ const App: React.FC = () => {
                       </>
                     ) : (
                       /* Edit Button for Equipped Items */
-                      (viewedName === localName || viewedName === '') && configItem.maxUpgrade && configItem.maxUpgrade > 0 && (
+                      (isLocalView) && configItem.maxUpgrade && configItem.maxUpgrade > 0 && (
                         <button
                           onClick={() => setPendingItem({ ...configItem })}
                           className="w-full mt-4 py-2 bg-white/5 border border-white/10 text-gray-300 fantasy-font uppercase tracking-widest text-xs font-bold hover:bg-white/10 hover:text-[#bfa571] hover:border-[#bfa571]/50 transition-all flex items-center justify-center gap-2"
@@ -1018,15 +1056,15 @@ const App: React.FC = () => {
                   <h3 className="fantasy-font text-[#bfa571] uppercase tracking-widest text-sm">
                     {selectedSlot ? selectedSlot.replace(/_/g, ' ') : 'Select a Slot'}
                   </h3>
-                  {selectedSlot && (viewedName === localName || viewedName === '') && (
+                  {selectedSlot && (isLocalView) && (
                     <button onClick={() => handleClearSlot(selectedSlot)} className="text-[10px] uppercase text-gray-500 hover:text-white transition-colors border border-white/10 px-2 py-1">Clear Slot</button>
                   )}
                 </div>
                 <input
                   type="text"
-                  placeholder={viewedName === localName || viewedName === '' ? "SEARCH ITEM..." : "READ ONLY MODE"}
-                  disabled={viewedName !== localName && viewedName !== ''}
-                  className={`w-full search-input py-2 px-4 text-xs tracking-widest uppercase fantasy-font bg-white/5 border border-white/10 outline-none focus:border-[#bfa571] transition-colors ${viewedName !== localName && viewedName !== '' ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  placeholder={isLocalView ? "SEARCH ITEM..." : "READ ONLY MODE"}
+                  disabled={!isLocalView}
+                  className={`w-full search-input py-2 px-4 text-xs tracking-widest uppercase fantasy-font bg-white/5 border border-white/10 outline-none focus:border-[#bfa571] transition-colors ${!isLocalView ? 'opacity-50 cursor-not-allowed' : ''}`}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                 />
@@ -1044,8 +1082,8 @@ const App: React.FC = () => {
                       return (
                         <div
                           key={item.id}
-                          onClick={() => (viewedName === localName || viewedName === '') && handleSelectItem(item)}
-                          className={`aspect-square soulslike-slot flex items-center justify-center transition-all relative ${isSelectedInSlot ? 'item-glow active' : ''} ${(viewedName === localName || viewedName === '') ? 'cursor-pointer hover:selected-highlight' : 'opacity-80 cursor-default'}`}
+                          onClick={() => (isLocalView) && handleSelectItem(item)}
+                          className={`aspect-square soulslike-slot flex items-center justify-center transition-all relative ${isSelectedInSlot ? 'item-glow active' : ''} ${(isLocalView) ? 'cursor-pointer hover:selected-highlight' : 'opacity-80 cursor-default'}`}
                           title={item.name}
                         >
                           {item.image ? (
