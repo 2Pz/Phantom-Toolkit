@@ -545,16 +545,14 @@ const App: React.FC = () => {
   };
 
   const handleCopyBuild = () => {
-    setLocalStatus(viewedStatus);
-    setLocalBuild({ ...viewedBuild, id: 'local-build', name: 'Imported Build' });
-    if (viewedName !== localName) {
-      // If we copied a build, we probably want to edit it now? 
-      // But let's keep it simple: just copy data to local state.
-      // User can switch to local view to see it.
-      // Or we can switch them:
-      // setViewedName(localName);
-      // setInspectedPlayer(null);
+    if (loadWithStats) {
+      setLocalStatus(viewedStatus);
     }
+    setLocalBuild({ ...viewedBuild, id: 'local-build', name: 'Imported Build' });
+
+    // Switch to local view to see the copied build
+    setViewedName(localName);
+    setInspectedPlayer(null);
   };
 
   const isLocalView = viewedName === localName || viewedName === '' || (inspectedPlayer?.isLocal ?? false);
