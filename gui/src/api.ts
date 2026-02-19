@@ -112,6 +112,29 @@ export async function getConfig(): Promise<AppConfig> {
     }
 }
 
+export interface AppMetadata {
+    name: string;
+    version: string;
+    authors: string[];
+    description: string;
+}
+
+export async function getMetadata(): Promise<AppMetadata> {
+    try {
+        const res = await fetch(`${API_BASE}/system/metadata`);
+        if (!res.ok) throw new Error('Failed to fetch metadata');
+        return await res.json();
+    } catch (e) {
+        console.error('Failed to get metadata', e);
+        return {
+            name: 'Phantom Toolkit',
+            version: '0.0.0',
+            authors: [],
+            description: ''
+        };
+    }
+}
+
 export async function updateConfig(config: Partial<AppConfig>): Promise<AppConfig> {
     try {
         const res = await fetch(`${API_BASE}/system/config`, {

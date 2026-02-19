@@ -6,7 +6,8 @@ import { SLOT_CSV_MAPPING } from './constants';
 import EquipmentGrid from './components/EquipmentGrid';
 import { AlertModal } from './components/Modal';
 import BackupTab from './components/BackupTab';
-import { detectGame, getPlayers, quitToMenu, fixInfiniteLoading, toggleFogWall, writeStats, toggleCheat as apiToggleCheat, searchItems, writeBuild, inspectBuild, mapBackendToFrontendSlots, convertBuildToSaveFormat, saveBuild, browseSaveFile, getConfig } from './api';
+import { detectGame, getPlayers, quitToMenu, fixInfiniteLoading, toggleFogWall, writeStats, toggleCheat as apiToggleCheat, searchItems, writeBuild, inspectBuild, mapBackendToFrontendSlots, convertBuildToSaveFormat, saveBuild, browseSaveFile, getConfig, getMetadata } from './api';
+import type { AppMetadata } from './api';
 import WeaponConfig from './components/WeaponConfig';
 import { LanguageSelector } from './components/LanguageSelector';
 
@@ -389,11 +390,14 @@ const App: React.FC = () => {
   const [loadWithStats, setLoadWithStats] = useState(true);
   const [language, setLanguage] = useState('en');
 
-  // Load config on mount
+  const [metadata, setMetadata] = useState<AppMetadata | null>(null);
+
+  // Load config and metadata on mount
   useEffect(() => {
     getConfig().then(cfg => {
       if (cfg.language) setLanguage(cfg.language);
     });
+    getMetadata().then(setMetadata);
   }, []);
 
   const [localBuild, setLocalBuild] = useState<Build>({
@@ -440,10 +444,14 @@ const App: React.FC = () => {
   const [sessionPlayers, setSessionPlayers] = useState<PlayerData[]>([]);
   const [pendingItem, setPendingItem] = useState<Item | null>(null);
 
+  const [isGameDetected, setIsGameDetected] = useState(false);
+
   // Game Detection & Data Polling
   useEffect(() => {
     const interval = setInterval(async () => {
       const game = await detectGame();
+      setIsGameDetected(!!game);
+
       if (game && game !== selectedGame) {
         setSelectedGame(game);
       }
@@ -1116,9 +1124,33 @@ const App: React.FC = () => {
         message={alertMsg || ''}
         onClose={() => setAlertMsg(null)}
       />
+
+      {/* Footer */}
+      <div className="border-t border-[#333] bg-[#0c0c0c] px-4 py-2 flex justify-between items-center text-[10px] text-gray-600 inter-font select-none">
+        <div className="flex gap-4">
+          <span>{metadata?.name} v{metadata?.version}</span>
+          {metadata?.authors?.length > 0 && (
+            <span>by {metadata.authors.join(', ')}</span>
+          )}
+        </div>
+        <div className="flex gap-4 items-center">
+          {isGameDetected ? (
+            <>
+              <span className="text-emerald-700/80">●</span>
+              <span>Attached to {selectedGame === 'ELDEN_RING' ? 'Elden Ring' : 'Dark Souls 3'}</span>
+              <span className="text-gray-700">|</span>
+              <span>{localName || 'Main Menu'}</span>
+            </>
+          ) : (
+            <>
+              <span className="text-red-900/50">●</span>
+              <span>Waiting for {selectedGame === 'ELDEN_RING' ? 'Elden Ring' : 'Dark Souls 3'}...</span>
+            </>
+          )}
+        </div>
+      </div>
     </div >
   );
 };
 
 export default App;
-
