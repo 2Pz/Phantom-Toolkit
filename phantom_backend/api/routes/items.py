@@ -36,10 +36,19 @@ def get_item(game: str, csv: str, id: int, lang: str | None = None):
 @router.get("/icons/{icon_id}")
 def get_icon(game: str, icon_id: str):
     svc = ItemAssetService(game_key=game)
-    data = svc.read_icon_png(icon_id)
+    data, fmt = svc.read_icon_data(icon_id)
+
+    media_type = "application/octet-stream"
+    if fmt == "webp":
+        media_type = "image/webp"
+    elif fmt == "png":
+        media_type = "image/png"
+    elif fmt == "dds":
+        media_type = "image/vnd.ms-dds"
+
     return Response(
         content=data,
-        media_type="image/png",
+        media_type=media_type,
         headers={"Cache-Control": "public, max-age=31536000"},
     )
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import csv
 import os
 import threading
@@ -272,48 +273,91 @@ class ItemAssetService:
 
         raise PhantomError(f"Icon '{icon_id}' not found")
 
-    def read_icon_png(self, icon_id: str) -> bytes:
-        """Read icon and convert to PNG if necessary."""
+    def read_icon_data(self, icon_id: str) -> tuple[bytes, str]:
+        """Read icon data and return (bytes, format_extension)."""
         data = self.read_icon_bytes(icon_id)
 
-        # Simple magic check
+        # WebP magic: RIFF....WEBP
+        if data.startswith(b"RIFF") and data[8:12] == b"WEBP":
+            return data, "webp"
+
+        # PNG magic
         if data.startswith(b"\x89PNG"):
-            return data
+            return data, "png"
 
-        try:
-            import io
+        # Empty/Small
+        if len(data) < 4:
+            return data, "bin"
 
-            from PIL import Image
+        # DDS magic: DDS
+        if data.startswith(b"DDS "):
+            try:
+                import io
 
-            with io.BytesIO(data) as bio, Image.open(bio) as img:
-                out = io.BytesIO()
-                img.save(out, format="PNG")
-                return out.getvalue()
-        except ImportError:
-            # Pillow not installed, return raw (likely DDS/BMP)
-            return data
-        except Exception:
-            # Conversion failed, return raw
-            return data
+                from PIL import Image
+
+                with io.BytesIO(data) as bio, Image.open(bio) as img:
+                    out = io.BytesIO()
+                    # Convert DDS to WebP on the fly if not optimized yet
+                    img.save(out, format="WEBP", quality=85)
+                    return out.getvalue(), "webp"
+            except Exception:
+                # Fallback: return raw DDS
+                return data, "dds"
+
+        # Unknown
+        return data, "bin"
 
 
 def _get_global_zip_handle(path: str) -> zipfile.ZipFile:
     with _GLOBAL_ZIP_LOCK:
-        if path not in _ZIP_HANDLES:
-            _ZIP_HANDLES[path] = zipfile.ZipFile(path, "r")
-        return _ZIP_HANDLES[path]
+        try:
+            mtime = os.stat(path).st_mtime
+        except OSError:
+            mtime = 0
+
+        cached = _ZIP_HANDLES.get(path)
+        if cached:
+            handle, last_mtime = cached
+            if last_mtime == mtime:
+                return handle
+            # File changed, close old and reload
+            # File changed, close old and reload
+            with contextlib.suppress(Exception):
+                handle.close()
+
+        # Open new
+        zf = zipfile.ZipFile(path, "r")
+        _ZIP_HANDLES[path] = (zf, mtime)
+        return zf
 
 
-@lru_cache(maxsize=1)
+_NAMELIST_CACHE = {}
+
+
 def _get_zip_namelist(zip_path_str: str) -> dict[str, str]:
     """Map stem -> full path inside zip for fast lookup."""
-    # Use shared handle to get namelist
+    # Check cache first
+    try:
+        mtime = os.stat(zip_path_str).st_mtime
+    except OSError:
+        mtime = 0
+
+    cached = _NAMELIST_CACHE.get(zip_path_str)
+    if cached:
+        mapping, last_mtime = cached
+        if last_mtime == mtime:
+            return mapping
+
+    # Refresh
     zf = _get_global_zip_handle(zip_path_str)
     mapping = {}
     for name in zf.namelist():
         stem = Path(name).stem
         if stem not in mapping:
             mapping[stem] = name
+
+    _NAMELIST_CACHE[zip_path_str] = (mapping, mtime)
     return mapping
 
 
