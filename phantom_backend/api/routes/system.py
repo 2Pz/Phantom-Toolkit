@@ -5,6 +5,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import PurePosixPath
+from typing import Any
 
 from fastapi import APIRouter
 
@@ -187,13 +188,52 @@ def get_config() -> dict[str, object]:
         # Add other config fields here as needed
     }
 
-
-@router.post("/config")
-def update_config(config: dict[str, object]) -> dict[str, object]:
-    """Update configuration."""
-    cm = ConfigManager()
-    if "language" in config:
-        cm.language = str(config["language"])
     return {
         "language": cm.language,
+    }
+
+
+@router.get("/metadata")
+def get_metadata() -> dict[str, Any]:
+    """Get application metadata (version, author, etc)."""
+    # Try reading from pyproject.toml first (dev mode)
+    try:
+        import tomllib
+
+        # Look for pyproject.toml in CWD or up
+        cwd = os.getcwd()
+        toml_path = os.path.join(cwd, "pyproject.toml")
+
+        if os.path.exists(toml_path):
+            with open(toml_path, "rb") as f:
+                data = tomllib.load(f)
+                project = data.get("project", {})
+                return {
+                    "name": project.get("name", "Phantom Toolkit"),
+                    "version": project.get("version", "0.0.0"),
+                    "authors": [a.get("name", "") for a in project.get("authors", [])],
+                    "description": project.get("description", ""),
+                }
+    except Exception:
+        pass
+
+    # Fallback to importlib.metadata (installed/packaged mode)
+    try:
+        from importlib.metadata import metadata, version
+
+        meta = metadata("phantom-toolkit")
+        return {
+            "name": meta.get("Name", "Phantom Toolkit"),
+            "version": version("phantom-toolkit"),
+            "authors": [meta.get("Author", "")],  # Simplified, email might be separate
+            "description": meta.get("Summary", ""),
+        }
+    except Exception:
+        pass
+
+    return {
+        "name": "Phantom Toolkit",
+        "version": "0.0.0-unknown",
+        "authors": [],
+        "description": "",
     }
