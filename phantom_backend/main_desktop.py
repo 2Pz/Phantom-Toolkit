@@ -350,10 +350,28 @@ def _maybe_run_linux_ui_against_proton_backend(*, host: str, port: int) -> bool:
     try:
         import webview
 
+        # Icon path for Linux native UI
+        icon_path = None
+        if getattr(sys, "frozen", False):
+            icon_path = os.path.join(sys._MEIPASS, "assets", "icon.ico")
+        else:
+            # Fallback for dev
+            icon_path = os.path.join(
+                os.path.dirname(os.path.dirname(__file__)), "assets", "icon.ico"
+            )
+
         webview.create_window(
-            "Phantom Toolkit", url, width=1600, height=950, resizable=True
+            "Phantom Toolkit",
+            url,
+            width=1600,
+            height=950,
+            resizable=True,
         )
-        webview.start(debug=False)
+
+        webview.start(
+            debug=False,
+            icon=icon_path if icon_path and os.path.exists(icon_path) else None,
+        )
     finally:
         with contextlib.suppress(Exception):
             proc.terminate()
@@ -553,6 +571,15 @@ def main():
 
         import webview
 
+        # Icon path for Windows/Proton backend UI
+        icon_path = None
+        if getattr(sys, "frozen", False):
+            icon_path = os.path.join(sys._MEIPASS, "assets", "icon.ico")
+        else:
+            icon_path = os.path.join(
+                os.path.dirname(os.path.dirname(__file__)), "assets", "icon.ico"
+            )
+
         webview.create_window(
             "Phantom Toolkit",
             f"http://{host}:{port}",
@@ -562,6 +589,8 @@ def main():
         )
 
         start_kwargs: dict[str, object] = {"debug": False}
+        if icon_path and os.path.exists(icon_path):
+            start_kwargs["icon"] = icon_path
         gui = os.environ.get("PYWEBVIEW_GUI", "").strip()
         if gui:
             start_kwargs["gui"] = gui

@@ -27,7 +27,17 @@ def main(argv: list[str] | None = None) -> int:
     argv = argv or sys.argv
     args = _parse_args(argv)
 
+    import os
+
     import webview
+
+    icon_path = None
+    if getattr(sys, "frozen", False):
+        icon_path = os.path.join(sys._MEIPASS, "assets", "icon.ico")
+    else:
+        icon_path = os.path.join(
+            os.path.dirname(os.path.dirname(__file__)), "assets", "icon.ico"
+        )
 
     webview.create_window(
         str(args.title),
@@ -36,7 +46,9 @@ def main(argv: list[str] | None = None) -> int:
         height=int(args.height),
         resizable=True,
     )
-    webview.start(debug=False)
+    webview.start(
+        debug=False, icon=icon_path if icon_path and os.path.exists(icon_path) else None
+    )
     return 0
 
 

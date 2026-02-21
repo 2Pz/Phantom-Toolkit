@@ -51,15 +51,20 @@ def main() -> None:
     build_assets_dir.mkdir(parents=True, exist_ok=True)
 
     src_icon_path = assets_dir / "icon.png"
+    src_ico_path = assets_dir / "icon.ico"
     out_png_path = build_assets_dir / "phantom-toolkit.png"
     out_ico_path = build_assets_dir / "phantom-toolkit.ico"
 
     # Load or Generate Source
     if src_icon_path.exists():
-        logger.info("Using source icon: %s", src_icon_path)
+        logger.info("Using source PNG icon: %s", src_icon_path)
         img = Image.open(src_icon_path).convert("RGBA")
+    elif src_ico_path.exists():
+        logger.info("Source PNG not found. Using ICO icon: %s", src_ico_path)
+        # Opening an ICO with Pillow returns the first image/best quality match
+        img = Image.open(src_ico_path).convert("RGBA")
     else:
-        logger.info("Source icon not found. Generating placeholder...")
+        logger.info("Source icons not found. Generating placeholder...")
         img = _render_base(512)
         img.save(src_icon_path)
         logger.info("Saved placeholder source icon to: %s", src_icon_path)

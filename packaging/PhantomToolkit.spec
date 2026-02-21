@@ -4,7 +4,7 @@ from pathlib import Path
 
 block_cipher = None
 
-datas = [('..\\gui\\dist', 'gui_dist'), ('..\\phantom_backend\\games', 'phantom_backend\\games')]
+datas = [('..\\gui\\dist', 'gui_dist'), ('..\\phantom_backend\\games', 'phantom_backend\\games'), ('..\\assets\\icon.ico', 'assets')]
 binaries = []
 hiddenimports = ['uvicorn', 'fastapi', 'engineio.async_drivers.asyncio']
 tmp_ret = collect_all('phantom_backend')
@@ -47,7 +47,7 @@ exe = EXE(
     codesign_identity=None,
     entitlements_file=None,
     uac_admin=False,
-    icon=['..\\build\\assets\\phantom-toolkit.ico'],
+    icon=['..\\assets\\icon.ico'],
     # Use SPECPATH (PyInstaller-provided) since __file__ is not defined here.
     version=str(Path(SPECPATH) / "version_file.txt"),
 )
