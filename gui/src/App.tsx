@@ -503,13 +503,13 @@ const App: React.FC = () => {
         const others = allPlayers.filter(p => !p.isLocal);
         setSessionPlayers(others);
 
-        const recent = await getRecentPlayers(game);
-        setRecentPlayers(recent);
-
       } else {
         setSessionPlayers([]);
-        setRecentPlayers([]);
       }
+
+      // Always fetch recent players to display them when game is not running
+      const recent = await getRecentPlayers(game || selectedGame);
+      setRecentPlayers(recent);
     }, 500);
 
     return () => clearInterval(interval);
