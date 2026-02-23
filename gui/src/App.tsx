@@ -6,7 +6,7 @@ import { SLOT_CSV_MAPPING } from './constants';
 import EquipmentGrid from './components/EquipmentGrid';
 import { AlertModal } from './components/Modal';
 import BackupTab from './components/BackupTab';
-import { detectGame, getPlayers, quitToMenu, fixInfiniteLoading, toggleFogWall, writeStats, toggleCheat as apiToggleCheat, searchItems, writeBuild, inspectBuild, mapBackendToFrontendSlots, convertBuildToSaveFormat, saveBuild, browseSaveFile, getConfig, getMetadata } from './api';
+import { detectGame, getPlayers, getRecentPlayers, quitToMenu, fixInfiniteLoading, toggleFogWall, writeStats, toggleCheat as apiToggleCheat, searchItems, writeBuild, inspectBuild, mapBackendToFrontendSlots, convertBuildToSaveFormat, saveBuild, browseSaveFile, getConfig, getMetadata } from './api';
 import type { AppMetadata } from './api';
 import WeaponConfig from './components/WeaponConfig';
 import { LanguageSelector } from './components/LanguageSelector';
@@ -248,10 +248,11 @@ const ToolkitTab: React.FC<{ cheats: CheatsState, onToggle: (key: keyof CheatsSt
 const MainTab: React.FC<{
   currentInspectedName: string;
   onInspect: (player: PlayerData) => void;
+  sessionPlayers: PlayerData[];
   recentPlayers: PlayerData[];
   localPlayer: PlayerData;
   selectedGame: GameType;
-}> = ({ currentInspectedName, onInspect, recentPlayers, localPlayer, selectedGame }) => {
+}> = ({ currentInspectedName, onInspect, sessionPlayers, recentPlayers, localPlayer, selectedGame }) => {
   return (
     <div className="flex-1 flex flex-col p-6 inter-font gap-8 overflow-y-auto custom-scrollbar">
       <section>
@@ -283,7 +284,7 @@ const MainTab: React.FC<{
                   )}
                 </td>
               </tr>
-              {recentPlayers.map((player, i) => (
+              {sessionPlayers.map((player, i) => (
                 <tr
                   key={i}
                   className={`cursor-pointer transition-colors ${currentInspectedName === player.name ? 'player-row-current' : 'hover:bg-white/5'}`}
@@ -303,6 +304,43 @@ const MainTab: React.FC<{
                   </td>
                 </tr>
               ))}
+            </tbody>
+          </table>
+        </div>
+      </section >
+
+      <section>
+        <h2 className="text-gray-200 font-bold mb-4">Recent Players</h2>
+        <div className="border border-[#333] bg-[#1e1e1e] overflow-x-auto custom-scrollbar">
+          <table className="session-table min-w-[600px]">
+            <thead>
+              <tr>
+                <th className="w-1/3">Username</th>
+                <th className="w-1/3">Level</th>
+                <th className="w-1/3">Last Seen</th>
+              </tr>
+            </thead>
+            <tbody>
+              {recentPlayers.length === 0 && (
+                <tr>
+                  <td colSpan={3} className="text-center text-gray-500 py-4">No recent players tracked yet.</td>
+                </tr>
+              )}
+              {recentPlayers.map((player, i) => {
+                const dateObj = new Date(player.date);
+                const dateStr = dateObj.toLocaleDateString() + ' ' + dateObj.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+                return (
+                  <tr
+                    key={i}
+                    className={`cursor-pointer transition-colors ${currentInspectedName === player.name ? 'player-row-current' : 'hover:bg-white/5'}`}
+                    onClick={() => onInspect(player)}
+                  >
+                    <td>{player.name}</td>
+                    <td>{player.name ? player.status.level : ''}</td>
+                    <td className="text-xs text-gray-400">{dateStr}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -421,6 +459,7 @@ const App: React.FC = () => {
   const [isSearching, setIsSearching] = useState(false);
 
   const [sessionPlayers, setSessionPlayers] = useState<PlayerData[]>([]);
+  const [recentPlayers, setRecentPlayers] = useState<PlayerData[]>([]);
   const [pendingItem, setPendingItem] = useState<Item | null>(null);
 
   const [isGameDetected, setIsGameDetected] = useState(false);
@@ -464,8 +503,12 @@ const App: React.FC = () => {
         const others = allPlayers.filter(p => !p.isLocal);
         setSessionPlayers(others);
 
+        const recent = await getRecentPlayers(game);
+        setRecentPlayers(recent);
+
       } else {
         setSessionPlayers([]);
+        setRecentPlayers([]);
       }
     }, 500);
 
@@ -849,7 +892,8 @@ const App: React.FC = () => {
           <MainTab
             currentInspectedName={viewedName}
             onInspect={handleInspect}
-            recentPlayers={sessionPlayers}
+            sessionPlayers={sessionPlayers}
+            recentPlayers={recentPlayers}
             localPlayer={localPlayer}
             selectedGame={selectedGame}
           />

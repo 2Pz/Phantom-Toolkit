@@ -10,6 +10,7 @@ from phantom_backend.api.models import (
 from phantom_backend.games.registry import GameRegistry
 from phantom_backend.services.items import ItemAssetService
 from phantom_backend.services.players import PlayerService
+from phantom_backend.services.recent_players import RecentPlayersService
 
 router = APIRouter(prefix="/{game}", tags=["players"])
 
@@ -98,6 +99,12 @@ def _enrich_player_data(p: PlayerService.PlayerState, game: str) -> PlayerDetail
     )
 
 
+@router.get("/players/recent", response_model=list[PlayerDetails])
+def list_recent_players(game: str):
+    svc = RecentPlayersService(game_key=game)
+    return svc.get_recent_players()
+
+
 @router.get("/players", response_model=list[PlayerDetails])
 def list_players(game: str):
     reg = GameRegistry()
@@ -107,7 +114,13 @@ def list_players(game: str):
         resolver = adapter.make_resolver(mem)
         svc = PlayerService(mem=mem, resolver=resolver, game_key=game)
         players = svc.list_players()
-        return [_enrich_player_data(p, game) for p in players]
+        enriched = [_enrich_player_data(p, game) for p in players]
+
+        # Save to recent players
+        recent_svc = RecentPlayersService(game_key=game)
+        recent_svc.add_players(enriched)
+
+        return enriched
     finally:
         mem.close()
 
