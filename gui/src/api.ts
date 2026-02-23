@@ -245,6 +245,7 @@ export async function browseSaveFile(defaultName: string = "build"): Promise<str
 interface BackendPlayer {
     player_num: number;
     name: string;
+    last_seen?: string;
     stats?: {
         vigor?: number;
         mind?: number;
@@ -433,6 +434,152 @@ export async function getPlayers(game: GameType): Promise<PlayerData[]> {
         });
     } catch (e) {
         console.error('Failed to list players', e);
+        return [];
+    }
+}
+
+export async function getRecentPlayers(game: GameType): Promise<PlayerData[]> {
+    try {
+        const gameKey = toBackendGame(game);
+        const res = await fetch(`${API_BASE}/${gameKey}/players/recent`);
+        if (!res.ok) return [];
+        const data = await res.json();
+
+        return (data as BackendPlayer[]).map((p) => {
+            // Transform backend response to match frontend PlayerData structure
+            const stats = p.stats || {};
+            const attributes = {
+                Vigor: stats.vigor || 0,
+                Mind: stats.mind || 0,
+                Attunement: stats.attunement || 0,
+                Endurance: stats.endurance || 0,
+                Vitality: stats.vitality || 0,
+                Strength: stats.strength || 0,
+                Dexterity: stats.dexterity || 0,
+                Intelligence: stats.intelligence || 0,
+                Faith: stats.faith || 0,
+                Arcane: stats.arcane || 0,
+                Luck: stats.luck || 0,
+            };
+
+            const status: StatusState = {
+                level: stats.level || 0,
+                secondary: stats.runes || stats.souls || 0,
+                journey: 1,
+                covenant: p.equipment?.covenant?.name || '-',
+                attributes: attributes,
+                scadutreeBlessing: stats.scadutree_blessing,
+                reveredSpiritAsh: stats.revered_spirit_ash_blessing,
+                hp: stats.hp,
+                maxHp: stats.max_hp,
+                steamId: stats.steamId
+            };
+
+            const slots: Record<string, Item | null> = {};
+            if (p.equipment) {
+                const equipment = p.equipment as Record<string, BackendItem>;
+                const mapSlot = (beKey: string, feKey: string) => {
+                    const itemData = equipment[beKey];
+                    if (itemData && itemData.id > 0) {
+                        const nameLower = itemData.name.toLowerCase();
+                        if (nameLower.includes('unarmed')) {
+                            return;
+                        }
+
+                        let upgrade: number | undefined = undefined;
+                        if (feKey.includes('weapon')) {
+                            const idNum = itemData.id;
+                            if (!isNaN(idNum) && idNum > 0) {
+                                const rawUpgrade = idNum % 100;
+                                if (rawUpgrade > 0 && rawUpgrade <= 25) {
+                                    upgrade = rawUpgrade;
+                                }
+                            }
+                        }
+
+                        const displayName = upgrade ? `${itemData.name} +${upgrade}` : itemData.name;
+                        const itemType = getTypeForBackendKey(beKey);
+                        const showImage = itemData.icon_id && Number(itemData.icon_id) !== 0 && !itemData.name.toLowerCase().includes('unarmed') && !itemData.name.toLowerCase().includes('unknown');
+
+                        slots[feKey] = {
+                            id: itemData.id.toString(),
+                            name: displayName,
+                            image: showImage ? `${API_BASE}/${gameKey}/icons/${itemData.icon_id}` : '',
+                            type: itemType,
+                            description: '',
+                            weight: 0,
+                            upgrade,
+                            maxUpgrade: itemData.max_upgrade,
+                            gemId: itemData.gem_id,
+                            count: itemData.count
+                        };
+                    }
+                };
+
+                mapSlot("primary_right_wep", "weapon_r_1");
+                mapSlot("secondary_right_wep", "weapon_r_2");
+                mapSlot("tertiary_right_wep", "weapon_r_3");
+                mapSlot("primary_left_wep", "weapon_l_1");
+                mapSlot("secondary_left_wep", "weapon_l_2");
+                mapSlot("tertiary_left_wep", "weapon_l_3");
+                mapSlot("helmet", "head");
+                mapSlot("armor", "chest");
+                mapSlot("gauntlet", "hands");
+                mapSlot("leggings", "legs");
+
+                if (game === 'DARK_SOULS_3') {
+                    mapSlot("ring_1", "ring_1");
+                    mapSlot("ring_2", "ring_2");
+                    mapSlot("ring_3", "ring_3");
+                    mapSlot("ring_4", "ring_4");
+                    mapSlot("covenant", "covenant");
+                } else {
+                    mapSlot("accessory_1", "talisman_1");
+                    mapSlot("accessory_2", "talisman_2");
+                    mapSlot("accessory_3", "talisman_3");
+                    mapSlot("accessory_4", "talisman_4");
+                    mapSlot("physick_tear_1", "physick_tear_1");
+                    mapSlot("physick_tear_2", "physick_tear_2");
+                }
+
+                for (let i = 1; i <= 10; i++) {
+                    const fePrefix = i <= 5 ? 'quick_1' : 'quick_2';
+                    mapSlot(`quick_item_${i}`, `${fePrefix}_${i}`);
+                }
+
+                for (let i = 0; i < 14; i++) {
+                    mapSlot(`magic_slot_${i}`, `spell_${i + 1}`);
+                }
+
+                if (game === 'ELDEN_RING') {
+                    mapSlot("primary_arrow", "ammo_1_1");
+                    mapSlot("secondary_arrow", "ammo_1_2");
+                    mapSlot("primary_bolt", "ammo_2_1");
+                    mapSlot("secondary_bolt", "ammo_2_2");
+                } else {
+                    mapSlot("primary_arrow", "ammo_arrow_1");
+                    mapSlot("secondary_arrow", "ammo_arrow_2");
+                    mapSlot("primary_bolt", "ammo_bolt_1");
+                    mapSlot("secondary_bolt", "ammo_bolt_2");
+                }
+            }
+
+            const build: Build = {
+                id: `recent-player-${p.player_num}-${p.name}`,
+                name: p.name,
+                slots: slots
+            };
+
+            return {
+                name: p.name,
+                status,
+                build,
+                isLocal: false,
+                date: p.last_seen || new Date().toISOString()
+            };
+        });
+    } catch (e) {
+        console.error('Failed to list recent players', e);
         return [];
     }
 }
