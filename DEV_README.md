@@ -66,6 +66,19 @@ We use `ruff` for both linting and formatting.
     npm run type-check
     ```
 
+## Linux Development
+
+On Linux, the backend runs under **Proton** (via a Windows build) to attach to the game. Build the Windows exe by running the GitHub Actions build workflow on your fork/branch, then download the resulting artifact.
+
+1.  **Start the game** (Elden Ring or Dark Souls III) via Steam with Proton.
+2.  **Run the Windows backend under Proton**:
+    ```bash
+    ./scripts/run_proton_phantomtoolkit.sh --exe /path/to/PhantomToolkit.exe
+    ```
+    The script auto-detects the running game, Proton, and the Steam prefix. See `--help` for more options.
+
+---
+
 ## Deployment & Building
 
 ### Running from Scripts
