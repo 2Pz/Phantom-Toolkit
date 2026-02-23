@@ -862,7 +862,7 @@ const App: React.FC = () => {
               onClick={() => setSelectedGame(g)}
               className={`px-3 py-1 text-[10px] fantasy-font tracking-widest uppercase transition-all ${selectedGame === g ? 'bg-[#bfa571] text-black' : 'text-gray-500 hover:text-gray-300'}`}
             >
-              {g.replace('_', ' ')}
+              {g.replace(/_/g, ' ')}
             </button>
           ))}
         </div>
