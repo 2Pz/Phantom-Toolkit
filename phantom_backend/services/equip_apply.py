@@ -577,8 +577,18 @@ class EquipApplyService:
                         offset = 0x3E4 + (slot - 32) * 4
                         self._mem.write_u32(equip_game_data + offset, 0xFFFFFFFF)
                         return True
-                    _equip_slot(slot, -1)
-                    return True
+
+                    if slot == 12:
+                        item_id = 1000
+                    elif slot == 13:
+                        item_id = 10100
+                    elif slot == 14:
+                        item_id = 10200
+                    elif slot == 15:
+                        item_id = 10300
+                    else:
+                        _equip_slot(slot, -1)
+                        return True
 
                 # Ash of War handling: weapon entries may be dicts: {"id": X, "ash_of_war": Y}
                 # Only apply on weapon slots (0-5). Other weapon slots (6-11) are arrows/bolts.
