@@ -17,6 +17,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from phantom_backend.config_manager import ConfigManager
+
 try:
     import keyboard
 except ImportError:
@@ -525,21 +527,35 @@ def list_save_files(save_dir: str, ext: str) -> list[str]:
 
 
 def load_settings(game_key: str = "") -> dict[str, Any]:
+    config_mgr = ConfigManager()
+    main_key = f"backup_settings_{game_key}" if game_key else "backup_settings"
+
+    # Check if settings exist in central config
+    settings = config_mgr.get(main_key)
+    if settings is not None:
+        return {**_DEFAULT_SETTINGS, **settings}
+
+    # Migration fallback: read old file if it exists
     p = _settings_path(game_key)
     if p.exists():
         try:
             with open(p, "r") as f:
-                return {**_DEFAULT_SETTINGS, **json.load(f)}
+                old_settings = {**_DEFAULT_SETTINGS, **json.load(f)}
+            # Save into central config and delete old file
+            config_mgr.set(main_key, old_settings)
+            with contextlib.suppress(Exception):
+                p.unlink()
+            return old_settings
         except Exception:
             pass
+
     return dict(_DEFAULT_SETTINGS)
 
 
 def save_settings(settings: dict[str, Any], game_key: str = "") -> None:
-    p = _settings_path(game_key)
-    p = _settings_path(game_key)
-    with open(p, "w") as f:
-        json.dump(settings, f, indent=2)
+    config_mgr = ConfigManager()
+    main_key = f"backup_settings_{game_key}" if game_key else "backup_settings"
+    config_mgr.set(main_key, settings)
 
     # Apply hotkeys if this is the active game context or global
     # For now, we only support one active set of hotkeys (the last saved/loaded ones)
