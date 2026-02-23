@@ -242,6 +242,17 @@ export async function browseSaveFile(defaultName: string = "build"): Promise<str
     }
 }
 
+export async function openUrl(url: string): Promise<void> {
+    try {
+        await fetch(`${API_BASE}/system/open_url?url=${encodeURIComponent(url)}`, { method: 'POST' });
+    } catch (e) {
+        console.warn('Failed to open URL via backend, falling back to window.open', e);
+        window.open(url, '_blank', 'noopener,noreferrer');
+    }
+}
+
+
+
 interface BackendPlayer {
     player_num: number;
     name: string;

@@ -177,6 +177,20 @@ def _which(cmd: str) -> str | None:
     return shutil.which(cmd)
 
 
+def _open_url_native(url: str) -> None:
+    """Open a URL in the default native Linux browser (fire-and-forget)."""
+
+    def _worker():
+        env = _child_env()
+        # Prefer xdg-open, then sensible-browser, then x-www-browser
+        for tool in ("xdg-open", "sensible-browser", "x-www-browser"):
+            if _which(tool):
+                subprocess.run([tool, url], check=False, env=env)
+                return
+
+    threading.Thread(target=_worker, daemon=True).start()
+
+
 def _run_on_main_thread(func: Callable, *args: Any, **kwargs: Any) -> Any:
     """Run a function on the main thread and wait for result."""
     # If we are already on the main thread, run directly (rare in this threading model)
@@ -897,6 +911,15 @@ class _Handler(BaseHTTPRequestHandler):
                 self.send_header("X-Phantom-Capture-Method", last.method)
             self.end_headers()
             self.wfile.write(data)
+            return
+
+        if path == "/open_url":
+            url = (qs.get("url", [""])[0] or "").strip()
+            if not url or not url.startswith(("http://", "https://")):
+                self._send_json(400, {"ok": False, "error": "invalid_url"})
+                return
+            _open_url_native(url)
+            self._send_json(200, {"ok": True})
             return
 
         self._send_json(404, {"error": "not_found"})

@@ -150,6 +150,39 @@ def browse_save_file(default_name: str = "build") -> dict[str, str | None]:
     return {"path": path}
 
 
+@router.post("/open_url")
+def open_url(url: str) -> dict[str, object]:
+    """Open a URL in the native system browser.
+
+    On AppImage/Linux this proxies to the host bridge so xdg-open runs
+    natively (outside of the Wine/Proton sandbox). On Windows / dev mode
+    it falls back to webbrowser.open().
+    """
+    # Basic security guard: only allow http/https
+    if not url.startswith(("http://", "https://")):
+        return {"ok": False, "error": "invalid_scheme"}
+
+    if _IS_APPIMAGE and _HOST_BRIDGE_URL:
+        try:
+            q = urllib.parse.urlencode({"url": url})
+            req = urllib.request.Request(
+                f"{_HOST_BRIDGE_URL}/open_url?{q}", method="GET"
+            )
+            with urllib.request.urlopen(req, timeout=5) as resp:  # noqa: S310
+                import json
+
+                data = json.loads(resp.read().decode("utf-8"))
+                return {"ok": data.get("ok", False)}
+        except Exception:
+            return {"ok": False, "error": "bridge_error"}
+
+    # Fallback: native Python webbrowser (works on Windows and in dev mode)
+    import webbrowser
+
+    webbrowser.open(url)
+    return {"ok": True}
+
+
 @router.get("/host_bridge_status")
 def host_bridge_status() -> dict[str, object]:
     """Debug endpoint: confirms whether AppImage host bridge is configured/reachable."""
