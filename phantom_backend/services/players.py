@@ -145,8 +145,17 @@ class PlayerService:
                 "revered_spirit_ash_blessing": self._mem.read_u8(base_addr + 0xFD),
             }
 
-            # Elden Ring Steam ID reading could be added here later if needed
-            # st.steam_id = ...
+            # Elden Ring Steam ID
+            try:
+                # Based on CE: [[[WorldChrMan]+10EF8]+player_offset]+5B0] + 8
+                # Note: This offset may return 0 for the local player, but works for phantoms.
+                sid_base = self._mem.read_ptr(addr + 0x5B0)
+                if sid_base:
+                    sid_val = self._mem.read_u64(sid_base + 0x8)
+                    if sid_val > 0:
+                        st.steam_id = str(sid_val)
+            except Exception:
+                pass
 
             # Equipment/build (IDs)
             st.equipment |= {
@@ -599,7 +608,7 @@ class PlayerService:
                 # Approach 3: Read as numeric value (int64)
                 if not steam_id:
                     try:
-                        sid_val = self._mem.read_i64(sid_addr)
+                        sid_val = self._mem.read_u64(sid_addr)
                         if sid_val > 0:
                             steam_id = str(sid_val)
                     except Exception:
