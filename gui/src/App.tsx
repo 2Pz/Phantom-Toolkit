@@ -6,7 +6,7 @@ import { SLOT_CSV_MAPPING } from './constants';
 import EquipmentGrid from './components/EquipmentGrid';
 import { AlertModal } from './components/Modal';
 import BackupTab from './components/BackupTab';
-import { detectGame, getPlayers, getRecentPlayers, quitToMenu, fixInfiniteLoading, toggleFogWall, writeStats, toggleCheat as apiToggleCheat, searchItems, writeBuild, inspectBuild, mapBackendToFrontendSlots, convertBuildToSaveFormat, saveBuild, browseSaveFile, getConfig, getMetadata } from './api';
+import { detectGame, getPlayers, getRecentPlayers, quitToMenu, fixInfiniteLoading, toggleFogWall, writeStats, toggleCheat as apiToggleCheat, searchItems, writeBuild, inspectBuild, mapBackendToFrontendSlots, convertBuildToSaveFormat, saveBuild, browseSaveFile, getConfig, getMetadata, openUrl } from './api';
 import type { AppMetadata } from './api';
 import WeaponConfig from './components/WeaponConfig';
 import { LanguageSelector } from './components/LanguageSelector';
@@ -53,16 +53,14 @@ const StatusPanel: React.FC<StatusPanelProps> = ({ playerName, status, game, onS
               {playerName}
             </h2>
             {status.steamId && (
-              <a
-                href={`https://steamcommunity.com/profiles/${status.steamId}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 w-fit text-[10px] text-[#bfa571]/80 hover:text-[#bfa571] hover:bg-white/5 px-1.5 py-0.5 rounded transition-all mb-1 border border-transparent hover:border-[#bfa571]/30"
+              <button
+                onClick={() => openUrl(`https://steamcommunity.com/profiles/${status.steamId}`)}
+                className="inline-flex items-center gap-1.5 w-fit text-[10px] text-[#bfa571]/80 hover:text-[#bfa571] hover:bg-white/5 px-1.5 py-0.5 rounded transition-all mb-1 border border-transparent hover:border-[#bfa571]/30 cursor-pointer bg-transparent"
                 title={`Open Steam Profile: ${status.steamId}`}
               >
                 <span className="font-mono tracking-wider">{status.steamId}</span>
                 <span className="text-[12px] leading-none mb-0.5">↗</span>
-              </a>
+              </button>
             )}
           </div>
 
