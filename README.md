@@ -29,7 +29,9 @@ Phantom Toolkit is a comprehensive open-source utility for **Elden Ring** and **
 1.  Download the latest `.AppImage` from the [Releases](https://github.com/2Pz/Phantom-Toolkit/releases) page.
 2.  Make the file executable: `chmod +x PhantomToolkit-x.x.x.AppImage`.
 3.  Ensure you have the [items](https://github.com/2Pz/Phantom-Toolkit/releases/tag/Items) folder in the same directory.
-4.  Run the AppImage.
+4.  **Start the game via Steam (Proton) first**, then run the AppImage.
+
+> **Note:** The game must already be running so the toolkit can automatically find the Proton prefix and attach to the game.
 
 ### Running from Source
 If you prefer to run from source, follow the instructions in [DEV_README.md](DEV_README.md).
