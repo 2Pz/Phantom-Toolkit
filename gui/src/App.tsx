@@ -47,22 +47,24 @@ const StatusPanel: React.FC<StatusPanelProps> = ({ playerName, status, game, onS
     <div className="w-[320px] flex flex-col p-6 h-full overflow-y-auto custom-scrollbar border-r border-[#2a2a2a] bg-black/40">
       {/* Header Section */}
       <div className="mb-6">
-        <div className="flex justify-between items-end mb-2 px-1">
-          {status.steamId ? (
-            <a
-              href={`https://steamcommunity.com/profiles/${status.steamId}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="group flex flex-col hover:opacity-80 transition-opacity"
-              title={`Open Steam Profile: ${status.steamId}`}
-            >
-              <h2 className="text-xl fantasy-font text-[#bfa571] tracking-widest leading-none border-b border-transparent group-hover:border-[#bfa571] transition-colors">
-                {playerName} <sup className="text-[10px] ml-1 text-gray-500">↗</sup>
-              </h2>
-            </a>
-          ) : (
-            <h2 className="text-xl fantasy-font text-gray-100 tracking-widest leading-none">{playerName}</h2>
-          )}
+        <div className="flex justify-between items-start mb-2 px-1">
+          <div className="flex flex-col gap-1">
+            <h2 className="text-xl fantasy-font text-gray-100 tracking-widest leading-none">
+              {playerName}
+            </h2>
+            {status.steamId && (
+              <a
+                href={`https://steamcommunity.com/profiles/${status.steamId}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 w-fit text-[10px] text-[#bfa571]/80 hover:text-[#bfa571] hover:bg-white/5 px-1.5 py-0.5 rounded transition-all mb-1 border border-transparent hover:border-[#bfa571]/30"
+                title={`Open Steam Profile: ${status.steamId}`}
+              >
+                <span className="font-mono tracking-wider">{status.steamId}</span>
+                <span className="text-[12px] leading-none mb-0.5">↗</span>
+              </a>
+            )}
+          </div>
 
           {isReadOnly && (
             <button
@@ -102,29 +104,6 @@ const StatusPanel: React.FC<StatusPanelProps> = ({ playerName, status, game, onS
               readOnly={isReadOnly}
             />
           </div>
-          {status.steamId && (
-            <div className="flex justify-between items-center pr-2 mt-2 pt-2 border-t border-[#bfa571]/10">
-              <span className={labelClasses}>Steam</span>
-              <div className="flex items-center gap-2">
-                <input
-                  type="text"
-                  value={status.steamId}
-                  readOnly
-                  className={`${inputClasses} text-xs w-[130px]`}
-                  title="Steam ID"
-                />
-                <a
-                  href={`https://steamcommunity.com/profiles/${status.steamId}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-[#bfa571] hover:text-white transition-colors"
-                  title="Open Profile"
-                >
-                  ↗
-                </a>
-              </div>
-            </div>
-          )}
         </div>
       </div>
 
