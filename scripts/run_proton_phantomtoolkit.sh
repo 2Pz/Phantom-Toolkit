@@ -357,11 +357,11 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-# Start Proton-side backend in its own process group when possible, so cleanup is reliable.
+# Use 'runinprefix' to bypass Proton's steam.exe stub (prevents DLC errors).
 if command -v setsid >/dev/null 2>&1; then
-  setsid "$proton" run "$exe" --no-webview --launched-by-appimage --host "${PHANTOM_HOST}" --port "${PHANTOM_PORT}" &
+  setsid "$proton" runinprefix "$exe" --no-webview --launched-by-appimage --host "${PHANTOM_HOST}" --port "${PHANTOM_PORT}" &
 else
-  "$proton" run "$exe" --no-webview --launched-by-appimage --host "${PHANTOM_HOST}" --port "${PHANTOM_PORT}" &
+  "$proton" runinprefix "$exe" --no-webview --launched-by-appimage --host "${PHANTOM_HOST}" --port "${PHANTOM_PORT}" &
 fi
 tool_pid=$!
 

@@ -283,9 +283,10 @@ def _launch_windows_backend_under_proton(
     env["PHANTOM_PORT"] = str(port)
     env.setdefault("PHANTOM_NO_WEBVIEW", "1")
 
+    # Use 'runinprefix' to bypass Proton's steam.exe stub (prevents DLC errors).
     cmd = [
         proton,
-        "run",
+        "runinprefix",
         win_exe,
         "--no-webview",
         "--launched-by-appimage",  # semantics: "Linux wrapper opens the URL"
