@@ -11,6 +11,7 @@
     "format:check:py": "uv run ruff format --check .",
     "check:py": "npm run lint:py && npm run format:check:py",
     "typecheck:ui": "npm --prefix gui run type-check",
+    "type-check": "npm run typecheck:ui",
     "check:ui": "npm run lint:ui && npm run typecheck:ui",
     "dup": "npx --yes jscpd --config jscpd.config.json phantom_backend gui",
     "check": "npm run check:py && npm run check:ui && npm run dup",

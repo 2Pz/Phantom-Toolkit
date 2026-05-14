@@ -65,3 +65,11 @@ class ConfigManager:
     @language.setter
     def language(self, value: str):
         self.set("language", value)
+
+    @property
+    def auto_calc_level(self) -> bool:
+        return self.get("auto_calc_level", False)
+
+    @auto_calc_level.setter
+    def auto_calc_level(self, value: bool):
+        self.set("auto_calc_level", value)

@@ -43,6 +43,7 @@ export interface BackendItem {
 
 export interface AppConfig {
   language: string;
+  autoCalcLevel?: boolean;
 }
 
 export interface Build {
