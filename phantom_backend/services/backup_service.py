@@ -506,10 +506,21 @@ _DEFAULT_SETTINGS: dict[str, Any] = {
 
 
 def _find_save_files(save_dir: str, ext: str) -> list[str]:
-    """Find all save files in save_dir matching the given extension (.sl2 or .co2)."""
+    """Find all save files in save_dir matching the given extension."""
     access_dir = _access_path(save_dir or "")
     if not access_dir or not os.path.isdir(access_dir):
         return []
+
+    # Support wildcard/all files
+    if ext in ("*", ".*", "", "All Files"):
+        return sorted(
+            [
+                f
+                for f in os.listdir(access_dir)
+                if os.path.isfile(os.path.join(access_dir, f))
+            ]
+        )
+
     ext = ext if ext.startswith(".") else f".{ext}"
     return sorted(
         [
@@ -727,12 +738,14 @@ def load_backup(
     restored: list[str] = []
     with zipfile.ZipFile(zip_path, "r") as zf:
         for member in zf.namelist():
-            if member.endswith((".sl2", ".co2")):
-                data = zf.read(member)
-                dest = os.path.join(save_dir, member)
-                with open(dest, "wb") as f:
-                    f.write(data)
-                restored.append(member)
+            # Skip non-save files (screenshots)
+            if member == "screenshot.png":
+                continue
+            data = zf.read(member)
+            dest = os.path.join(save_dir, member)
+            with open(dest, "wb") as f:
+                f.write(data)
+            restored.append(member)
 
     if not restored:
         raise RuntimeError("No save files found in backup zip")
