@@ -6,7 +6,7 @@ import {
   listBackups, createBackup, loadBackup, deleteBackup,
   pinBackup, renameBackup, getScreenshotUrl,
   startAutoBackup, stopAutoBackup, getAutoBackupStatus,
-  listSaveFiles, quitToMenu, toFrontendGame, browseDirectory,
+  listSaveFiles, browseDirectory, setActiveBackup,
 } from '../api';
 import { ConfirmationModal, InputModal } from './Modal';
 
@@ -248,6 +248,13 @@ const BackupTab: React.FC<Props> = ({ game = '' }) => {
     }
   }, [selectedBackup, pinnedBackups, regularBackups, game]);
 
+  // Sync active selection to backend for global hotkeys
+  useEffect(() => {
+    if (selectedBackup) {
+      setActiveBackup(selectedBackup, game).catch(() => { });
+    }
+  }, [selectedBackup, game]);
+
 
   const handleSaveSettings = async () => {
     try {
@@ -309,53 +316,29 @@ const BackupTab: React.FC<Props> = ({ game = '' }) => {
   const handleLoad = async () => {
     if (!selectedBackup) return;
 
-    if (settings.quit_to_menu_before_load) {
-      setConfirmModal({
-        open: true,
-        title: 'Safe Load Confirmation',
-        message: `"Safe Load" is ENABLED.\n\nThis will:\n1. Quit to Main Menu\n2. Wait 5 seconds\n3. Restore "${selectedBackup}"\n\nContinue?`,
-        onConfirm: async () => {
-          setConfirmModal(null);
-          setLoading(true);
-          try {
-            setStatusMsg('Quitting to Main Menu...');
-            const gameType = toFrontendGame(game);
-            if (gameType) {
-              await quitToMenu(gameType);
-              setStatusMsg('Waiting for menu (5s)...');
-              await new Promise(r => setTimeout(r, 5000));
-            } else {
-              console.warn("Could not determine game type for quitToMenu");
-            }
+    const isSafeLoad = settings.quit_to_menu_before_load;
+    const msg = isSafeLoad
+      ? `Restore "${selectedBackup}"? (Safe Load enabled: will quit to menu first)`
+      : `Restore "${selectedBackup}"? (Ensure you are in the Main Menu!)`;
 
-            setStatusMsg(`Restoring: ${selectedBackup}...`);
-            await loadBackup(selectedBackup, game);
-            setStatusMsg(`Restored: ${selectedBackup}`);
-          } catch (e) {
-            const err = e as Error;
-            setStatusMsg(`Error: ${err.message}`);
-          } finally { setLoading(false); }
-        }
-      });
-    } else {
-      setConfirmModal({
-        open: true,
-        title: 'Load Backup',
-        message: `WARNING: You should be in the Main Menu before loading a save!\n\nRestore "${selectedBackup}" now?`,
-        isDanger: true,
-        onConfirm: async () => {
-          setConfirmModal(null);
-          setLoading(true);
-          try {
-            await loadBackup(selectedBackup, game);
-            setStatusMsg(`Restored: ${selectedBackup}`);
-          } catch (e) {
-            const err = e as Error;
-            setStatusMsg(`Error: ${err.message}`);
-          } finally { setLoading(false); }
-        }
-      });
-    }
+    setConfirmModal({
+      open: true,
+      title: 'Load Backup',
+      message: msg,
+      isDanger: !isSafeLoad,
+      onConfirm: async () => {
+        setConfirmModal(null);
+        setLoading(true);
+        setStatusMsg(isSafeLoad ? 'Performing Safe Load (quitting...)' : `Restoring: ${selectedBackup}...`);
+        try {
+          await loadBackup(selectedBackup, game);
+          setStatusMsg(`Restored: ${selectedBackup}`);
+        } catch (e) {
+          const err = e as Error;
+          setStatusMsg(`Error: ${err.message}`);
+        } finally { setLoading(false); }
+      }
+    });
   };
 
   const handleDelete = async (name?: string) => {
@@ -643,7 +626,7 @@ const BackupTab: React.FC<Props> = ({ game = '' }) => {
                   onChange={v => setSettings(s => ({ ...s, keybind_save: v }))}
                 />
                 <KeybindInput
-                  label="Load Latest Backup"
+                  label="Load Selected/Latest Backup"
                   value={settings.keybind_load}
                   onChange={v => setSettings(s => ({ ...s, keybind_load: v }))}
                 />
