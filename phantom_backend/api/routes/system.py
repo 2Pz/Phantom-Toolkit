@@ -218,12 +218,19 @@ def get_config() -> dict[str, object]:
     cm = ConfigManager()
     return {
         "language": cm.language,
-        # Add other config fields here as needed
+        "autoCalcLevel": cm.auto_calc_level,
     }
 
-    return {
-        "language": cm.language,
-    }
+
+@router.post("/config")
+def update_config(config: dict[str, Any]) -> dict[str, Any]:
+    """Update configuration."""
+    cm = ConfigManager()
+    if "language" in config:
+        cm.language = config["language"]
+    if "autoCalcLevel" in config:
+        cm.auto_calc_level = bool(config["autoCalcLevel"])
+    return get_config()
 
 
 @router.get("/metadata")

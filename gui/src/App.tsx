@@ -6,7 +6,7 @@ import { SLOT_CSV_MAPPING } from './constants';
 import EquipmentGrid from './components/EquipmentGrid';
 import { AlertModal } from './components/Modal';
 import BackupTab from './components/BackupTab';
-import { detectGame, getPlayers, getRecentPlayers, quitToMenu, fixInfiniteLoading, toggleFogWall, writeStats, toggleCheat as apiToggleCheat, searchItems, writeBuild, inspectBuild, mapBackendToFrontendSlots, convertBuildToSaveFormat, saveBuild, browseSaveFile, getConfig, getMetadata, openUrl } from './api';
+import { detectGame, getPlayers, getRecentPlayers, quitToMenu, fixInfiniteLoading, toggleFogWall, writeStats, toggleCheat as apiToggleCheat, searchItems, writeBuild, inspectBuild, mapBackendToFrontendSlots, convertBuildToSaveFormat, saveBuild, browseSaveFile, getConfig, getMetadata, openUrl, updateConfig } from './api';
 import type { AppMetadata } from './api';
 import WeaponConfig from './components/WeaponConfig';
 import { LanguageSelector } from './components/LanguageSelector';
@@ -33,9 +33,11 @@ interface StatusPanelProps {
   onAttributeChange: (name: string, value: number) => void;
   isReadOnly: boolean;
   onCopy: () => void;
+  autoCalcLevel: boolean;
+  onToggleAutoCalc: (enabled: boolean) => void;
 }
 
-const StatusPanel: React.FC<StatusPanelProps> = ({ playerName, status, game, onStatusChange, onAttributeChange, isReadOnly, onCopy }) => {
+const StatusPanel: React.FC<StatusPanelProps> = ({ playerName, status, game, onStatusChange, onAttributeChange, isReadOnly, onCopy, autoCalcLevel, onToggleAutoCalc }) => {
   const attributes = game === 'ELDEN_RING' ? ER_ATTRIBUTES : DS3_ATTRIBUTES;
 
   const inputClasses = `bg-transparent text-right font-bold text-gray-100 outline-none w-20 inter-font text-base [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none hover:bg-white/5 focus:bg-[#bfa571]/15 px-2 py-0.5 rounded transition-all ${isReadOnly ? 'pointer-events-none' : 'border border-transparent focus:border-[#bfa571]/50'}`;
@@ -82,14 +84,25 @@ const StatusPanel: React.FC<StatusPanelProps> = ({ playerName, status, game, onS
           Identity
         </h3>
         <div className="status-line flex flex-col gap-2">
+          {!isReadOnly && (
+            <div className="flex justify-between items-center pr-2 mb-1 pb-2 border-b border-white/5">
+              <span className={labelClasses}>Auto-Calculator</span>
+              <button
+                onClick={() => onToggleAutoCalc(!autoCalcLevel)}
+                className={`px-3 py-1 text-[10px] fantasy-font tracking-widest uppercase transition-all border shadow-sm ${autoCalcLevel ? 'bg-[#bfa571] text-black border-[#bfa571] font-bold' : 'bg-transparent text-gray-500 border-white/10 hover:border-white/30 hover:text-gray-300'}`}
+              >
+                {autoCalcLevel ? 'Active' : 'Manual'}
+              </button>
+            </div>
+          )}
           <div className="flex justify-between items-center pr-2">
             <span className={labelClasses}>Level</span>
             <input
               type="number"
               value={playerName ? (status.level ?? '') : ''}
               onChange={(e) => onStatusChange('level', parseInt(e.target.value) || 0)}
-              className={inputClasses}
-              readOnly={isReadOnly}
+              className={`${inputClasses} ${autoCalcLevel ? 'text-[#bfa571] shadow-[0_0_10px_rgba(191,165,113,0.1)]' : ''}`}
+              readOnly={isReadOnly || autoCalcLevel}
             />
           </div>
           <div className="flex justify-between items-center pr-2">
@@ -403,6 +416,7 @@ const App: React.FC = () => {
   const [hoveredSlot, setHoveredSlot] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [loadWithStats, setLoadWithStats] = useState(true);
+  const [autoCalcLevel, setAutoCalcLevel] = useState(false);
   const [language, setLanguage] = useState('en');
 
   const [metadata, setMetadata] = useState<AppMetadata | null>(null);
@@ -411,6 +425,7 @@ const App: React.FC = () => {
   useEffect(() => {
     getConfig().then(cfg => {
       if (cfg.language) setLanguage(cfg.language);
+      if (cfg.autoCalcLevel !== undefined) setAutoCalcLevel(cfg.autoCalcLevel);
     });
     getMetadata().then(setMetadata);
   }, []);
@@ -595,12 +610,43 @@ const App: React.FC = () => {
 
   const handleAttributeChange = (name: string, value: number) => {
     if (!isLocalView) return;
+    const newAttributes = { ...localStatus.attributes, [name]: value };
+
+    let newLevel = localStatus.level;
+    if (autoCalcLevel) {
+      const attributeNames = selectedGame === 'ELDEN_RING' ? ER_ATTRIBUTES : DS3_ATTRIBUTES;
+      const sum = attributeNames.reduce((acc, attr) => acc + (newAttributes[attr] || 0), 0);
+      const offset = selectedGame === 'ELDEN_RING' ? 79 : 89;
+      newLevel = sum - offset;
+    }
+
     const newStatus = {
       ...localStatus,
-      attributes: { ...localStatus.attributes, [name]: value }
+      level: newLevel,
+      attributes: newAttributes
     };
     setLocalStatus(newStatus);
     writeStats(selectedGame, 0, newStatus);
+  };
+
+  const handleToggleAutoCalc = (enabled: boolean) => {
+    setAutoCalcLevel(enabled);
+    updateConfig({ autoCalcLevel: enabled });
+
+    if (enabled) {
+      // Recalculate level immediately
+      const attributeNames = selectedGame === 'ELDEN_RING' ? ER_ATTRIBUTES : DS3_ATTRIBUTES;
+      const sum = attributeNames.reduce((acc, attr) => acc + (localStatus.attributes[attr] || 0), 0);
+      const offset = selectedGame === 'ELDEN_RING' ? 79 : 89;
+      const newLevel = sum - offset;
+
+      const newStatus = {
+        ...localStatus,
+        level: newLevel
+      };
+      setLocalStatus(newStatus);
+      writeStats(selectedGame, 0, newStatus);
+    }
   };
 
   const toggleCheat = (key: keyof CheatsState) => {
@@ -883,6 +929,8 @@ const App: React.FC = () => {
             onAttributeChange={handleAttributeChange}
             isReadOnly={!isLocalView}
             onCopy={handleCopyBuild}
+            autoCalcLevel={autoCalcLevel}
+            onToggleAutoCalc={handleToggleAutoCalc}
           />
         </aside>
 
