@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { BackupEntry, BackupSettings } from '../types';
 import {
   getBackupSettings, saveBackupSettings, autoFindSavePaths,
@@ -14,7 +14,7 @@ interface Props {
   game?: string;
 }
 
-const SAVE_FILE_OPTIONS = ['.sl2', '.co2', '.bak', '*'];
+
 
 const KeybindInput: React.FC<{
   label: string;
@@ -137,12 +137,67 @@ const BackupTab: React.FC<Props> = ({ game = '' }) => {
   const [confirmModal, setConfirmModal] = useState<{ open: boolean; title: string; message: string; isDanger?: boolean; onConfirm: () => void } | null>(null);
   const [inputModal, setInputModal] = useState<{ open: boolean; title: string; initialValue: string; label?: string; onConfirm: (val: string) => void } | null>(null);
 
+  // ---- API ----
+  const loadSettingsFromBackend = useCallback(async () => {
+    try {
+      const s = await getBackupSettings(game);
+      setSettings(s);
+    } catch {
+      // ignore
+    }
+  }, [game]);
+
+  const fetchSaveFiles = useCallback(async (dir: string, ext: string) => {
+    try {
+      const data = await listSaveFiles(dir, ext);
+      setAvailableSaveFiles(data.files);
+      // Auto-select first file if current selection is invalid or empty
+      setSettings(s => {
+        if (data.files.length > 0 && (!s.save_file_name || !data.files.includes(s.save_file_name))) {
+          return { ...s, save_file_name: data.files[0], save_file_type: '*' };
+        }
+        return s;
+      });
+    } catch { setAvailableSaveFiles([]); }
+  }, []);
+
+  const checkAutoStatus = useCallback(async () => {
+    try {
+      const data = await getAutoBackupStatus();
+      setAutoRunning(data.running);
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const refreshBackups = useCallback(async () => {
+    try {
+      const data = await listBackups(game);
+
+      // Auto-select logic: if top REGULAR backup changed, select it
+      // This handles the case where pinned items mask the new backup in a combined list
+      if (data.regular.length > 0) {
+        const newestRegular = data.regular[0].name;
+        // If newest changed, OR if we had no previous newest (empty list), select it
+        if (lastNewestRef.current !== newestRegular) {
+          setSelectedBackup(newestRegular);
+        }
+        lastNewestRef.current = newestRegular;
+      }
+
+      setPinnedBackups(data.pinned.map((b, i) => ({ ...b, id: `p${i}` })));
+      setRegularBackups(data.regular.map((b, i) => ({ ...b, id: `r${i}` })));
+    } catch {
+      // ignore
+    }
+  }, [game]);
+
   // ---- Init ----
   useEffect(() => {
     loadSettingsFromBackend();
     refreshBackups();
     checkAutoStatus();
-  }, [game]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [game, loadSettingsFromBackend, refreshBackups, checkAutoStatus]);
 
   // Fetch save files on dir/ext change
   useEffect(() => {
@@ -151,7 +206,7 @@ const BackupTab: React.FC<Props> = ({ game = '' }) => {
     } else {
       setAvailableSaveFiles([]);
     }
-  }, [settings.save_directory]);
+  }, [settings.save_directory, fetchSaveFiles]);
 
   // Close context menu on click
   useEffect(() => {
@@ -193,57 +248,6 @@ const BackupTab: React.FC<Props> = ({ game = '' }) => {
     }
   }, [selectedBackup, pinnedBackups, regularBackups, game]);
 
-  // ---- API ----
-  const loadSettingsFromBackend = async () => {
-    try {
-      const s = await getBackupSettings(game);
-      setSettings(s);
-    } catch {
-      // ignore
-    }
-  };
-
-  const fetchSaveFiles = async (dir: string, ext: string) => {
-    try {
-      const data = await listSaveFiles(dir, ext);
-      setAvailableSaveFiles(data.files);
-      // Auto-select first file if current selection is invalid or empty
-      if (data.files.length > 0 && (!settings.save_file_name || !data.files.includes(settings.save_file_name))) {
-        setSettings(s => ({ ...s, save_file_name: data.files[0], save_file_type: '*' }));
-      }
-    } catch { setAvailableSaveFiles([]); }
-  };
-
-  const refreshBackups = async () => {
-    try {
-      const data = await listBackups(game);
-
-      // Auto-select logic: if top REGULAR backup changed, select it
-      // This handles the case where pinned items mask the new backup in a combined list
-      if (data.regular.length > 0) {
-        const newestRegular = data.regular[0].name;
-        // If newest changed, OR if we had no previous newest (empty list), select it
-        if (lastNewestRef.current !== newestRegular) {
-          setSelectedBackup(newestRegular);
-        }
-        lastNewestRef.current = newestRegular;
-      }
-
-      setPinnedBackups(data.pinned.map((b, i) => ({ ...b, id: `p${i}` })));
-      setRegularBackups(data.regular.map((b, i) => ({ ...b, id: `r${i}` })));
-    } catch {
-      // ignore
-    }
-  };
-
-  const checkAutoStatus = async () => {
-    try {
-      const data = await getAutoBackupStatus();
-      setAutoRunning(data.running);
-    } catch {
-      // ignore
-    }
-  };
 
   const handleSaveSettings = async () => {
     try {
