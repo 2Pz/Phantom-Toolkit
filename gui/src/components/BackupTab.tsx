@@ -14,7 +14,7 @@ interface Props {
   game?: string;
 }
 
-const SAVE_FILE_OPTIONS = ['.sl2', '.co2'];
+const SAVE_FILE_OPTIONS = ['.sl2', '.co2', '.bak', '*'];
 
 const KeybindInput: React.FC<{
   label: string;
@@ -147,11 +147,11 @@ const BackupTab: React.FC<Props> = ({ game = '' }) => {
   // Fetch save files on dir/ext change
   useEffect(() => {
     if (settings.save_directory) {
-      fetchSaveFiles(settings.save_directory, settings.save_file_type);
+      fetchSaveFiles(settings.save_directory, '*');
     } else {
       setAvailableSaveFiles([]);
     }
-  }, [settings.save_directory, settings.save_file_type]);
+  }, [settings.save_directory]);
 
   // Close context menu on click
   useEffect(() => {
@@ -198,9 +198,6 @@ const BackupTab: React.FC<Props> = ({ game = '' }) => {
     try {
       const s = await getBackupSettings(game);
       setSettings(s);
-      // If we just loaded settings for a new game, we might need to clear current available saves 
-      // if the dir changed, but the useEffect on [settings.save_directory] handles that.
-      // However, we should be careful about race conditions if game changes quickly.
     } catch {
       // ignore
     }
@@ -210,6 +207,10 @@ const BackupTab: React.FC<Props> = ({ game = '' }) => {
     try {
       const data = await listSaveFiles(dir, ext);
       setAvailableSaveFiles(data.files);
+      // Auto-select first file if current selection is invalid or empty
+      if (data.files.length > 0 && (!settings.save_file_name || !data.files.includes(settings.save_file_name))) {
+        setSettings(s => ({ ...s, save_file_name: data.files[0], save_file_type: '*' }));
+      }
     } catch { setAvailableSaveFiles([]); }
   };
 
@@ -563,26 +564,24 @@ const BackupTab: React.FC<Props> = ({ game = '' }) => {
             </button>
           </div>
 
-          {/* Extension + Save File + Method */}
+          {/* Save File Selection */}
           <div className="grid grid-cols-3 gap-3">
-            <div>
-              <label className="block text-xs text-gray-400 mb-1 uppercase tracking-wider">Extension</label>
-              <select value={settings.save_file_type}
-                onChange={e => setSettings(s => ({ ...s, save_file_type: e.target.value, save_file_name: '' }))}
-                className="w-full bg-[#1a1a1a] border border-[#333] rounded px-3 py-1.5 text-sm text-gray-200 focus:border-[#bfa571] focus:outline-none">
-                {SAVE_FILE_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+            <div className="col-span-2">
+              <label className="block text-xs text-gray-400 mb-1 uppercase tracking-wider">Save File to Backup</label>
+              <select
+                value={settings.save_file_name}
+                onChange={e => setSettings(s => ({ ...s, save_file_name: e.target.value, save_file_type: '*' }))}
+                className="w-full bg-[#1a1a1a] border border-[#333] rounded px-3 py-1.5 text-sm text-gray-200 focus:border-[#bfa571] focus:outline-none"
+              >
+                {availableSaveFiles.map(f => (
+                  <option key={f} value={f}>{f}</option>
+                ))}
+                {availableSaveFiles.length === 0 && (
+                  <option disabled>No files found in directory</option>
+                )}
               </select>
             </div>
-            <div>
-              <label className="block text-xs text-gray-400 mb-1 uppercase tracking-wider">Save File</label>
-              <select value={settings.save_file_name}
-                onChange={e => setSettings(s => ({ ...s, save_file_name: e.target.value }))}
-                className="w-full bg-[#1a1a1a] border border-[#333] rounded px-3 py-1.5 text-sm text-gray-200 focus:border-[#bfa571] focus:outline-none">
-                <option value="">All {settings.save_file_type} files</option>
-                {availableSaveFiles.map(f => <option key={f} value={f}>{f}</option>)}
-              </select>
-            </div>
-            <div>
+            <div className="col-span-1">
               <label className="block text-xs text-gray-400 mb-1 uppercase tracking-wider">Backup Method</label>
               <select value={settings.backup_method}
                 onChange={e => setSettings(s => ({ ...s, backup_method: parseInt(e.target.value) }))}
