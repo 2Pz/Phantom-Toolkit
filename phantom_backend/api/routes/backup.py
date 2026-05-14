@@ -87,38 +87,10 @@ def list_all(game: str = ""):
 
 @router.post("/create")
 def create(body: CreateBackupModel):
-    # Safety Check
-    if body.game:
-        st = backup_service._check_game_status(body.game)
-        if not st["attached"]:
-            raise HTTPException(status_code=400, detail="Game not attached")
-
-    # Optionally request save from the game first
-    if body.request_save and body.game:
-        try:
-            from phantom_backend.games.registry import GameRegistry
-            from phantom_backend.services.actions import ActionsService
-
-            reg = GameRegistry()
-            adapter = reg.get(body.game)
-            mem = adapter.make_memory()
-            try:
-                resolver = adapter.make_resolver(mem)
-                ActionsService(
-                    mem=mem, resolver=resolver, game_key=body.game
-                ).request_save()
-            finally:
-                mem.close()
-            # Wait a moment for the save to complete
-            import time
-
-            time.sleep(2)
-        except Exception:
-            # Game might not be running, still do the backup
-            pass
-
     try:
-        result = backup_service.create_backup(game_key=body.game)
+        result = backup_service.create_backup(
+            game_key=body.game, request_save=body.request_save
+        )
         return result
     except RuntimeError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
@@ -126,12 +98,6 @@ def create(body: CreateBackupModel):
 
 @router.post("/load")
 def load(name: str, game: str = ""):
-    # Safety Check
-    if game:
-        st = backup_service._check_game_status(game)
-        if not st["attached"]:
-            raise HTTPException(status_code=400, detail="Game not attached")
-
     try:
         result = backup_service.load_backup(name, game_key=game)
         return result
@@ -187,3 +153,8 @@ def auto_stop():
 @router.get("/auto/status")
 def auto_status():
     return backup_service.is_auto_backup_running()
+
+
+@router.post("/active")
+def set_active(name: str, game: str = ""):
+    return backup_service.set_active_backup(game, name)

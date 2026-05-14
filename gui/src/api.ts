@@ -1161,6 +1161,14 @@ export async function getAutoBackupStatus(): Promise<{ running: boolean }> {
     return res.json();
 }
 
+export async function setActiveBackup(name: string, game: string = ''): Promise<void> {
+    const gameKey = toBackendGame(game);
+    const res = await fetch(`${API_BASE}/backup/active?name=${encodeURIComponent(name)}&game=${encodeURIComponent(gameKey)}`, {
+        method: 'POST',
+    });
+    if (!res.ok) throw new Error('Failed to set active backup');
+}
+
 export async function browseDirectory(initialDir: string = ''): Promise<string | null> {
     try {
         const res = await fetch(`${API_BASE}/system/browse_directory?initial_dir=${encodeURIComponent(initialDir)}`);
