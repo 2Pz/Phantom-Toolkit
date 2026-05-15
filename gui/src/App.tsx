@@ -186,6 +186,31 @@ const StatusPanel: React.FC<StatusPanelProps> = ({ playerName, status, game, onS
   );
 };
 
+export const TabActionButton: React.FC<{ 
+  onClick: () => void; 
+  label: string; 
+  disabled?: boolean;
+  variant?: 'primary' | 'outline' | 'danger';
+}> = ({ onClick, label, disabled, variant = 'primary' }) => {
+  const base = "px-6 py-3 rounded-md inter-font uppercase tracking-wider text-[11px] font-black transition-all border flex items-center justify-center shadow-md active:scale-95";
+  
+  const variants = {
+    primary: "bg-[#bfa571] text-black border-[#bfa571] hover:brightness-110 shadow-[0_0_15px_rgba(191,165,113,0.2)]",
+    outline: "bg-white/5 text-gray-200 border-white/20 hover:border-[#bfa571]/50 hover:text-white hover:bg-white/10",
+    danger: "bg-red-900/40 text-red-100 border-red-700/50 hover:bg-red-800/60 hover:text-white"
+  };
+
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className={`${base} ${variants[variant]} ${disabled ? 'opacity-30 grayscale cursor-not-allowed' : 'cursor-pointer'}`}
+    >
+      {label}
+    </button>
+  );
+};
+
 const ToolkitTab: React.FC<{ cheats: CheatsState, onToggle: (key: keyof CheatsState) => void, selectedGame: GameType }> = ({ cheats, onToggle, selectedGame }) => {
   const cheatList = [
     { key: 'noDead', label: 'No Dead', icon: '🛡️' },
@@ -359,25 +384,22 @@ const MainTab: React.FC<{
 
       <div className={`grid ${selectedGame === 'ELDEN_RING' ? 'grid-cols-3' : 'grid-cols-2'} gap-4`}>
         {selectedGame === 'ELDEN_RING' && (
-          <button
-            className="action-btn"
+          <TabActionButton
+            label="Fix Infinite Loading"
             onClick={() => fixInfiniteLoading(selectedGame)}
-          >
-            Fix Infinite Loading Screen
-          </button>
+            variant="outline"
+          />
         )}
-        <button
-          className="action-btn"
+        <TabActionButton
+          label="Quit To Main Menu"
           onClick={() => quitToMenu(selectedGame)}
-        >
-          Quit To Main Menu
-        </button>
-        <button
-          className="action-btn"
+          variant="outline"
+        />
+        <TabActionButton
+          label="Fog Wall Anim"
           onClick={() => toggleFogWall(selectedGame)}
-        >
-          Fog Wall Anim
-        </button>
+          variant="outline"
+        />
       </div>
     </div >
   );
@@ -823,7 +845,14 @@ const App: React.FC = () => {
         }
       }
 
-      await writeBuild(selectedGame, 0, slotsToApply, localStatus);
+      console.log('Applying build...');
+      const updatedPlayer = await writeBuild(selectedGame, 0, slotsToApply, localStatus);
+      console.log('Build applied successfully. Received:', updatedPlayer);
+      
+      // Synchronize local state with what was actually applied to the game
+      setLocalBuild(updatedPlayer.build);
+      setLocalStatus(updatedPlayer.status);
+
       setAlertMsg('Build applied to active session!');
     } catch (e) {
       console.error('Failed to apply build', e);
@@ -883,7 +912,7 @@ const App: React.FC = () => {
   }, [activeTab, isLocalView, selectedSlot, hoveredSlot, handleClearSlot]); // Dependencies for closure freshness
 
   return (
-    <div className="min-h-screen textured-bg flex flex-col overflow-hidden">
+    <div className="h-screen textured-bg flex flex-col overflow-hidden">
       <header className="min-h-16 flex items-center justify-between px-8 bg-black/80 border-b border-[#2a2a2a] shrink-0 z-50 flex-wrap gap-y-4 py-2">
         <div className="flex items-center gap-6">
           <div className="flex items-center gap-4">
@@ -950,64 +979,39 @@ const App: React.FC = () => {
         )}
 
         {activeTab === 'backup' && (
-          <BackupTab game={selectedGame === 'ELDEN_RING' ? 'eldenring' : 'ds3'} />
+          <div className="flex-1 h-full overflow-hidden">
+            <BackupTab game={selectedGame === 'ELDEN_RING' ? 'eldenring' : 'ds3'} />
+          </div>
         )}
 
         {activeTab === 'build' && (
           <>
-            <section className="flex-1 flex flex-col items-center justify-center p-8 overflow-y-auto custom-scrollbar">
-              <div className="mb-6 w-full max-w-2xl flex flex-col items-center">
+            <section className="flex-1 flex flex-col items-center justify-start p-4 overflow-y-auto custom-scrollbar">
+              <div className="mb-1 w-full max-w-2xl flex flex-col items-center">
                 <h2 className="text-xl fantasy-font text-[#bfa571] uppercase tracking-widest text-center">
                   {isLocalView ? 'Equipment' : `${viewedName}'s Build`}
-                </h2 >
+                </h2>
                 <div className="status-header-line w-64 mx-auto"></div>
 
-                {
-                  (isLocalView) && (
-                    <div className="flex flex-col items-center gap-4 mt-2 mb-4 bg-black/20 p-4 border border-white/5 rounded backdrop-blur-sm">
-                      <div className="flex items-center gap-4">
-                        <button
-                          onClick={handleApplyBuild}
-                          className="px-8 py-2 bg-[#bfa571] border border-[#bfa571] text-black fantasy-font uppercase text-xs tracking-[0.2em] hover:brightness-110 transition-all font-bold shadow-[0_0_15px_rgba(191,165,113,0.3)]"
-                        >
-                          Apply Build
-                        </button>
-                        <button
-                          onClick={handleSaveBuild}
-                          disabled={saveBuildPicking}
-                          className="px-6 py-2 bg-[#bfa571]/10 border border-[#bfa571] text-[#bfa571] fantasy-font uppercase text-xs tracking-widest hover:bg-[#bfa571] hover:text-black transition-all font-bold disabled:opacity-50 disabled:hover:bg-[#bfa571]/10 disabled:hover:text-[#bfa571]"
-                        >
-                          Save Build
-                        </button>
-                        <button
-                          onClick={handleLoadBuild}
-                          className="px-6 py-2 bg-white/5 border border-white/20 text-gray-300 fantasy-font uppercase text-xs tracking-widest hover:bg-white/10 hover:border-white/40 transition-all font-bold"
-                        >
-                          Load Build
-                        </button>
+                {isLocalView && (
+                  <div className="flex flex-wrap items-center justify-center gap-2 mt-2 mb-1 p-2 bg-white/5 border border-white/5 rounded-md backdrop-blur-md w-full max-w-3xl">
+                    <TabActionButton label="Apply Build" onClick={handleApplyBuild} />
+                    <TabActionButton label="Save File" onClick={handleSaveBuild} variant="outline" disabled={saveBuildPicking} />
+                    <TabActionButton label="Load File" onClick={handleLoadBuild} variant="outline" />
+                    
+                    <div className="h-6 w-px bg-white/10 mx-1" />
+                    
+                    <label className="flex items-center gap-2 cursor-pointer group select-none">
+                      <div 
+                        onClick={() => setLoadWithStats(!loadWithStats)}
+                        className={`w-4 h-4 rounded border transition-all flex items-center justify-center ${loadWithStats ? 'bg-[#bfa571] border-[#bfa571]' : 'bg-black/40 border-white/20 group-hover:border-[#bfa571]/50'}`}
+                      >
+                        {loadWithStats && <span className="text-black text-[9px] font-bold">✓</span>}
                       </div>
-
-                      <label className="flex items-center gap-3 cursor-pointer group">
-                        <div className="relative w-5 h-5">
-                          <input
-                            type="checkbox"
-                            checked={loadWithStats}
-                            onChange={(e) => setLoadWithStats(e.target.checked)}
-                            className="sr-only"
-                          />
-                          <div className={`w-5 h-5 border transition-all ${loadWithStats ? 'border-[#bfa571] bg-[#bfa571]/20' : 'border-white/20 bg-transparent'}`}>
-                            {loadWithStats && (
-                              <div className="absolute inset-0 flex items-center justify-center">
-                                <div className="w-2 h-2 bg-[#bfa571] rotate-45" />
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                        <span className="text-[10px] fantasy-font text-gray-400 group-hover:text-gray-200 uppercase tracking-widest transition-colors font-bold">Load with stats</span>
-                      </label>
-                    </div>
-                  )
-                }
+                      <span className="text-[9px] inter-font font-black uppercase tracking-wider text-gray-400 group-hover:text-gray-200 transition-colors">Load Stats</span>
+                    </label>
+                  </div>
+                )}
               </div >
 
               <EquipmentGrid

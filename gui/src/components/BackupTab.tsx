@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { BackupEntry, BackupSettings } from '../types';
 import {
@@ -6,15 +5,14 @@ import {
   listBackups, createBackup, loadBackup, deleteBackup,
   pinBackup, renameBackup, getScreenshotUrl,
   startAutoBackup, stopAutoBackup, getAutoBackupStatus,
-  listSaveFiles, quitToMenu, toFrontendGame, browseDirectory,
+  listSaveFiles, browseDirectory,
 } from '../api';
 import { ConfirmationModal, InputModal } from './Modal';
+import { TabActionButton } from '../App';
 
 interface Props {
   game?: string;
 }
-
-
 
 const KeybindInput: React.FC<{
   label: string;
@@ -45,9 +43,8 @@ const KeybindInput: React.FC<{
     if (e.altKey) modifiers.push('alt');
 
     let key = e.key.toLowerCase();
-    if (key === 'control' || key === 'shift' || key === 'alt') return; // wait for non-modifier
+    if (key === 'control' || key === 'shift' || key === 'alt') return; 
 
-    // Map some keys to match 'keyboard' lib expectations if needed
     if (key === ' ') key = 'space';
 
     const combo = [...modifiers, key].join('+');
@@ -57,13 +54,13 @@ const KeybindInput: React.FC<{
 
   return (
     <div className="flex flex-col">
-      <label className="text-xs text-gray-400 mb-1 uppercase tracking-wider">{label}</label>
+      <label className="text-[10px] text-gray-500 mb-1 uppercase tracking-widest fantasy-font font-bold">{label}</label>
       <div className="flex gap-2">
         <input
           type="text"
-          value={recording ? 'Press keys...' : (value || 'None')}
+          value={recording ? 'PRESS KEYS...' : (value || 'NONE')}
           readOnly
-          className={`flex-1 bg-[#1a1a1a] border ${recording ? 'border-[#bfa571]' : 'border-[#333]'} rounded px-3 py-1.5 text-sm text-gray-200 focus:outline-none cursor-pointer`}
+          className={`flex-1 bg-black/40 border ${recording ? 'border-[#bfa571]' : 'border-white/10'} rounded-sm px-3 py-2 text-xs text-gray-200 focus:outline-none cursor-pointer fantasy-font tracking-widest transition-all`}
           onClick={() => setRecording(true)}
           onKeyDown={handleKeyDown}
           onBlur={() => setRecording(false)}
@@ -71,7 +68,7 @@ const KeybindInput: React.FC<{
         {value && (
           <button
             onClick={() => onChange('')}
-            className="px-2 bg-[#2a2a2a] border border-[#333] rounded text-gray-400 hover:text-red-400"
+            className="px-2 bg-white/5 border border-white/10 rounded-sm text-gray-500 hover:text-red-400 transition-colors"
             title="Clear"
           >
             ✕
@@ -122,9 +119,7 @@ const BackupTab: React.FC<Props> = ({ game = '' }) => {
 
   // Directory browser modal
   const [dirPicking, setDirPicking] = useState(false);
-  // useState updates are async; useRef prevents click-race double opens.
   const dirPickingRef = useRef(false);
-
 
   // Auto-find & save files
   const [autoFindResults, setAutoFindResults] = useState<{ path: string; game: string; steam_id: string }[] | null>(null);
@@ -142,16 +137,13 @@ const BackupTab: React.FC<Props> = ({ game = '' }) => {
     try {
       const s = await getBackupSettings(game);
       setSettings(s);
-    } catch {
-      // ignore
-    }
+    } catch { /* ignore */ }
   }, [game]);
 
   const fetchSaveFiles = useCallback(async (dir: string, ext: string) => {
     try {
       const data = await listSaveFiles(dir, ext);
       setAvailableSaveFiles(data.files);
-      // Auto-select first file if current selection is invalid or empty
       setSettings(s => {
         if (data.files.length > 0 && (!s.save_file_name || !data.files.includes(s.save_file_name))) {
           return { ...s, save_file_name: data.files[0], save_file_type: '*' };
@@ -165,31 +157,22 @@ const BackupTab: React.FC<Props> = ({ game = '' }) => {
     try {
       const data = await getAutoBackupStatus();
       setAutoRunning(data.running);
-    } catch {
-      // ignore
-    }
+    } catch { /* ignore */ }
   }, []);
 
   const refreshBackups = useCallback(async () => {
     try {
       const data = await listBackups(game);
-
-      // Auto-select logic: if top REGULAR backup changed, select it
-      // This handles the case where pinned items mask the new backup in a combined list
       if (data.regular.length > 0) {
         const newestRegular = data.regular[0].name;
-        // If newest changed, OR if we had no previous newest (empty list), select it
         if (lastNewestRef.current !== newestRegular) {
           setSelectedBackup(newestRegular);
         }
         lastNewestRef.current = newestRegular;
       }
-
       setPinnedBackups(data.pinned.map((b, i) => ({ ...b, id: `p${i}` })));
       setRegularBackups(data.regular.map((b, i) => ({ ...b, id: `r${i}` })));
-    } catch {
-      // ignore
-    }
+    } catch { /* ignore */ }
   }, [game]);
 
   // ---- Init ----
@@ -199,7 +182,6 @@ const BackupTab: React.FC<Props> = ({ game = '' }) => {
     checkAutoStatus();
   }, [game, loadSettingsFromBackend, refreshBackups, checkAutoStatus]);
 
-  // Fetch save files on dir/ext change
   useEffect(() => {
     if (settings.save_directory) {
       fetchSaveFiles(settings.save_directory, '*');
@@ -208,35 +190,22 @@ const BackupTab: React.FC<Props> = ({ game = '' }) => {
     }
   }, [settings.save_directory, fetchSaveFiles]);
 
-  // Close context menu on click
   useEffect(() => {
     const h = () => setCtxMenu(null);
     window.addEventListener('click', h);
     return () => window.removeEventListener('click', h);
   }, []);
 
-  // Poll while auto-backup running
+  // SNR-Snappy UI Refresh: Sync with game saves and background activity
   useEffect(() => {
-    if (autoRunning) {
-      pollRef.current = window.setInterval(() => {
-        checkAutoStatus();
-        refreshBackups();
-      }, 5000);
-    }
-    return () => {
-      if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
-    };
-  }, [autoRunning]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Global polling for manual/hotkey backups (every 2s)
-  useEffect(() => {
+    refreshBackups(); // Initial fetch
     const interval = setInterval(() => {
       refreshBackups();
-    }, 2000);
+      checkAutoStatus();
+    }, 800);
     return () => clearInterval(interval);
-  }, [game]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [game, refreshBackups, checkAutoStatus]);
 
-  // Screenshot preview
   useEffect(() => {
     if (!selectedBackup) { setScreenshotUrl(null); return; }
     const all = [...pinnedBackups, ...regularBackups];
@@ -247,7 +216,6 @@ const BackupTab: React.FC<Props> = ({ game = '' }) => {
       setScreenshotUrl(null);
     }
   }, [selectedBackup, pinnedBackups, regularBackups, game]);
-
 
   const handleSaveSettings = async () => {
     try {
@@ -277,20 +245,16 @@ const BackupTab: React.FC<Props> = ({ game = '' }) => {
     try {
       const initial = field === 'save' ? settings.save_directory : settings.backup_directory;
       const path = await browseDirectory(initial);
-      if (!path) return; // user cancelled
+      if (!path) return;
       setSettings(s => ({
         ...s,
         [field === 'save' ? 'save_directory' : 'backup_directory']: path
       }));
-    } catch {
-      // ignore
-    } finally {
+    } catch { /* ignore */ } finally {
       dirPickingRef.current = false;
       setDirPicking(false);
     }
   };
-
-
 
   const handleCreate = async () => {
     setLoading(true);
@@ -299,69 +263,47 @@ const BackupTab: React.FC<Props> = ({ game = '' }) => {
       const result = await createBackup(game, true);
       setStatusMsg(`Backup created: ${result.name}`);
       await refreshBackups();
+      setSelectedBackup(result.name);
     } catch (e) {
       const err = e as Error;
       setStatusMsg(`Error: ${err.message}`);
-    }
-    finally { setLoading(false); }
+    } finally { setLoading(false); }
   };
 
   const handleLoad = async () => {
     if (!selectedBackup) return;
-
-    if (settings.quit_to_menu_before_load) {
-      setConfirmModal({
-        open: true,
-        title: 'Safe Load Confirmation',
-        message: `"Safe Load" is ENABLED.\n\nThis will:\n1. Quit to Main Menu\n2. Wait 5 seconds\n3. Restore "${selectedBackup}"\n\nContinue?`,
-        onConfirm: async () => {
-          setConfirmModal(null);
-          setLoading(true);
-          try {
-            setStatusMsg('Quitting to Main Menu...');
-            const gameType = toFrontendGame(game);
-            if (gameType) {
-              await quitToMenu(gameType);
-              setStatusMsg('Waiting for menu (5s)...');
-              await new Promise(r => setTimeout(r, 5000));
-            } else {
-              console.warn("Could not determine game type for quitToMenu");
-            }
-
-            setStatusMsg(`Restoring: ${selectedBackup}...`);
-            await loadBackup(selectedBackup, game);
-            setStatusMsg(`Restored: ${selectedBackup}`);
-          } catch (e) {
-            const err = e as Error;
-            setStatusMsg(`Error: ${err.message}`);
-          } finally { setLoading(false); }
-        }
-      });
-    } else {
-      setConfirmModal({
-        open: true,
-        title: 'Load Backup',
-        message: `WARNING: You should be in the Main Menu before loading a save!\n\nRestore "${selectedBackup}" now?`,
-        isDanger: true,
-        onConfirm: async () => {
-          setConfirmModal(null);
-          setLoading(true);
-          try {
-            await loadBackup(selectedBackup, game);
-            setStatusMsg(`Restored: ${selectedBackup}`);
-          } catch (e) {
-            const err = e as Error;
-            setStatusMsg(`Error: ${err.message}`);
-          } finally { setLoading(false); }
-        }
-      });
-    }
+    
+    // Centralized logic is now in the backend. 
+    // If "Safe Load" is enabled, the backend will trigger quitToMenu() and wait 1s.
+    const isSafeLoad = settings.quit_to_menu_before_load;
+    
+    setConfirmModal({
+      open: true,
+      title: isSafeLoad ? 'Safe Load' : 'Load Backup',
+      message: isSafeLoad 
+        ? `Safe Load Active: This will return you to the Main Menu and restore "${selectedBackup}".\n\nContinue?`
+        : `WARNING: You should be in the Main Menu before loading a save!\n\nRestore "${selectedBackup}" now?`,
+      isDanger: !isSafeLoad,
+      onConfirm: async () => {
+        setConfirmModal(null);
+        setLoading(true);
+        try {
+          if (isSafeLoad) setStatusMsg('Quitting & Restoring...');
+          else setStatusMsg(`Restoring: ${selectedBackup}...`);
+          
+          await loadBackup(selectedBackup, game);
+          setStatusMsg(`Restored: ${selectedBackup}`);
+        } catch (e) {
+          const err = e as Error;
+          setStatusMsg(`Error: ${err.message}`);
+        } finally { setLoading(false); }
+      }
+    });
   };
 
   const handleDelete = async (name?: string) => {
     const target = name || selectedBackup;
     if (!target) return;
-
     setConfirmModal({
       open: true,
       title: 'Delete Backup',
@@ -399,7 +341,7 @@ const BackupTab: React.FC<Props> = ({ game = '' }) => {
       onConfirm: async (newName) => {
         setInputModal(null);
         if (!newName || newName === name.replace('.zip', '')) return;
-        try { await renameBackup(name, newName, game); await refreshBackups(); }
+        try { await renameBackup(name, newName, game); await refreshBackups(); setSelectedBackup(newName.endsWith('.zip') ? newName : `${newName}.zip`); }
         catch (e) {
           const err = e as Error;
           setStatusMsg(`Error: ${err.message}`);
@@ -430,318 +372,412 @@ const BackupTab: React.FC<Props> = ({ game = '' }) => {
     }
   };
 
-  // ---- Render ----
-  const renderRow = (entry: BackupEntry, idx: number) => {
-    const selected = selectedBackup === entry.name;
+  // ---- Sub-components ----
+
+  const BackupCard: React.FC<{ entry: BackupEntry, index: number, isPinned: boolean }> = ({ entry, index, isPinned }) => {
+    const isSelected = selectedBackup === entry.name;
     return (
-      <tr
-        key={entry.name}
-        className={`cursor-pointer transition-colors ${selected ? 'bg-[#3a3a6a]' : 'hover:bg-[#252535]'}`}
+      <div
         onClick={() => setSelectedBackup(entry.name)}
         onContextMenu={(e) => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY, item: entry }); }}
+        className={`
+          group relative rounded border mb-3 transition-all duration-300 cursor-pointer overflow-hidden
+          ${isSelected 
+            ? 'border-[#bfa571] shadow-[0_5px_15px_rgba(191,165,113,0.2)] bg-[#bfa571]/5' 
+            : 'border-white/5 hover:border-white/10 bg-black/20'}
+        `}
       >
-        <td className="px-3 py-1.5 text-gray-500 w-8">{idx + 1}</td>
-        <td className="px-3 py-1.5 text-blue-400 hover:underline">{entry.name}</td>
-        <td className="px-3 py-1.5 text-green-400">{entry.date}</td>
-      </tr>
-    );
-  };
-
-  const renderTable = (title: string, entries: BackupEntry[]) => (
-    <div className="mb-4">
-      <h3 className="font-bold text-sm uppercase tracking-wider text-[#bfa571] mb-2" style={{ fontVariant: 'small-caps', fontSize: '14px' }}>
-        {title}
-      </h3>
-      <div className="border border-[#333] rounded overflow-x-auto custom-scrollbar">
-        <table className="w-full text-sm min-w-[500px]" style={{ fontFamily: "'Inter', sans-serif" }}>
-          <thead>
-            <tr className="bg-[#1a1a2a] text-gray-400 text-xs uppercase">
-              <th className="px-3 py-2 text-left w-8">#</th>
-              <th className="px-3 py-2 text-left">Backup Name</th>
-              <th className="px-3 py-2 text-left">Date</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-[#222]">
-            {entries.length > 0 ? entries.map((e, i) => renderRow(e, i)) : (
-              <tr><td colSpan={3} className="px-3 py-3 text-center text-gray-600 italic">No backups</td></tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-
-  const btnClass = "flex-1 py-2.5 px-4 text-sm font-semibold rounded transition-all text-white";
-
-  return (
-    <div className="w-full h-full flex flex-col overflow-y-auto custom-scrollbar" style={{ fontFamily: "'Cormorant Garamond', serif" }}>
-
-      {/* Game Preview / Screenshot */}
-      <div className="w-full bg-[#0a0a0a] border border-[#333] rounded-lg overflow-hidden mb-3">
-        {screenshotUrl ? (
-          <img
-            src={screenshotUrl}
-            alt="Game Preview"
-            className="w-full block object-cover"
-            style={{ maxHeight: '35vh' }}
-            onError={() => setScreenshotUrl(null)}
-          />
-        ) : (
-          <div className="flex items-center justify-center text-gray-600 text-sm italic" style={{ height: '200px' }}>
-            🖼️ Game Preview
-          </div>
-        )}
-      </div>
-
-      {/* Auto Backup Status */}
-      <div className="mb-3 px-1">
-        <span className={`text-sm font-bold ${autoRunning ? 'text-green-400' : 'text-red-400'}`}>
-          Auto Backup: {autoRunning
-            ? `Running (${settings.backup_method === 0 ? `every ${settings.auto_backup_interval}m` : 'file watcher'})`
-            : 'Not Running'}
-        </span>
-        {statusMsg && <span className="text-gray-500 text-xs ml-4">{statusMsg}</span>}
-      </div>
-
-      {/* Settings Toggle */}
-      <button
-        className="mb-3 px-3 py-1.5 text-xs text-gray-400 hover:text-[#bfa571] border border-[#333] rounded hover:border-[#555] transition-colors self-start flex items-center gap-1"
-        onClick={() => setSettingsOpen(!settingsOpen)}
-        style={{ fontFamily: "'Inter', sans-serif" }}
-      >
-        ⚙️ Settings {settingsOpen ? '▲' : '▼'}
-      </button>
-
-      {/* Settings Panel */}
-      {settingsOpen && (
-        <div className="mb-4 p-4 border border-[#333] rounded-lg bg-[#111118] space-y-3" style={{ fontFamily: "'Inter', sans-serif" }}>
-          {/* Save Directory */}
-          <div>
-            <label className="block text-xs text-gray-400 mb-1 uppercase tracking-wider">Save Directory</label>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={settings.save_directory}
-                onChange={e => setSettings(s => ({ ...s, save_directory: e.target.value }))}
-                className="flex-1 bg-[#1a1a1a] border border-[#333] rounded px-3 py-1.5 text-sm text-gray-200 focus:border-[#bfa571] focus:outline-none"
-                placeholder="/path/to/save/files"
-              />
-              <button onClick={handleAutoFind} className="px-3 py-1.5 bg-[#2a2a2a] border border-[#444] rounded text-xs text-gray-300 hover:bg-[#333] hover:text-[#bfa571] transition-colors">
-                Auto Find
-              </button>
-              <button
-                onClick={() => handleBrowse('save')}
-                disabled={dirPicking}
-                className="px-3 py-1.5 bg-[#2a2a2a] border border-[#444] rounded text-xs text-gray-300 hover:bg-[#333] hover:text-[#bfa571] transition-colors disabled:opacity-50"
-              >
-                Browse
-              </button>
-            </div>
-            {autoFindResults && (
-              <div className="mt-2 border border-[#444] rounded bg-[#1a1a1a] overflow-hidden">
-                {autoFindResults.map((r, i) => (
-                  <button key={i} className="w-full text-left px-3 py-1.5 hover:bg-[#2a2520] text-sm text-gray-300 hover:text-[#bfa571] transition-colors border-b border-[#222] last:border-b-0"
-                    onClick={() => { setSettings(s => ({ ...s, save_directory: r.path })); setAutoFindResults(null); }}>
-                    <span className="text-[#bfa571] text-xs mr-2">{r.game}</span> {r.path}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Backup Directory */}
-          <div className="relative">
-            <label className="block text-xs text-gray-400 mb-1 uppercase tracking-wider">Backup Directory</label>
-            <input
-              type="text"
-              value={settings.backup_directory}
-              onChange={e => setSettings(s => ({ ...s, backup_directory: e.target.value }))}
-              className="w-full bg-[#1a1a1a] border border-[#333] rounded px-3 py-1.5 text-sm text-gray-200 focus:border-[#bfa571] focus:outline-none"
-              placeholder="/path/to/backups"
+        <div className="h-[100px] w-full bg-black/60 relative">
+          {entry.hasScreenshot ? (
+            <img 
+              src={getScreenshotUrl(entry.name, game)} 
+              alt={entry.name} 
+              className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" 
+              loading="lazy"
             />
-            <button
-              onClick={() => handleBrowse('backup')}
-              disabled={dirPicking}
-              className="absolute right-1 top-6 bottom-1 px-3 bg-[#2a2a2a] border-l border-[#444] rounded-r text-xs text-gray-300 hover:bg-[#333] hover:text-[#bfa571] transition-colors disabled:opacity-50"
-            >
-              Browse
-            </button>
-          </div>
-
-          {/* Save File Selection */}
-          <div className="grid grid-cols-3 gap-3">
-            <div className="col-span-2">
-              <label className="block text-xs text-gray-400 mb-1 uppercase tracking-wider">Save File to Backup</label>
-              <select
-                value={settings.save_file_name}
-                onChange={e => setSettings(s => ({ ...s, save_file_name: e.target.value, save_file_type: '*' }))}
-                className="w-full bg-[#1a1a1a] border border-[#333] rounded px-3 py-1.5 text-sm text-gray-200 focus:border-[#bfa571] focus:outline-none"
+          ) : (
+            <div className="w-full h-full flex items-center justify-center text-[10px] fantasy-font text-gray-700 tracking-widest">
+              NO PREVIEW
+            </div>
+          )}
+          
+          {/* Overlay Info */}
+          <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent flex flex-col justify-end p-2">
+            <div className="flex justify-between items-end gap-2">
+              <div className="flex-1 min-w-0">
+                <h4 className={`text-[10px] fantasy-font tracking-[0.2em] truncate uppercase mb-0.5 ${isSelected ? 'text-[#bfa571]' : 'text-gray-300'}`}>
+                  {entry.name.replace('.zip', '')}
+                </h4>
+                <span className="text-[8px] text-gray-500 uppercase tracking-widest block">{entry.date}</span>
+              </div>
+              <button 
+                onClick={(e) => { e.stopPropagation(); handlePin(entry.name, !isPinned); }}
+                className={`transition-all p-1 text-xs ${isPinned ? 'text-[#bfa571]' : 'text-gray-600 hover:text-white opacity-40 hover:opacity-100'}`}
               >
-                {availableSaveFiles.map(f => (
-                  <option key={f} value={f}>{f}</option>
-                ))}
-                {availableSaveFiles.length === 0 && (
-                  <option disabled>No files found in directory</option>
-                )}
-              </select>
-            </div>
-            <div className="col-span-1">
-              <label className="block text-xs text-gray-400 mb-1 uppercase tracking-wider">Backup Method</label>
-              <select value={settings.backup_method}
-                onChange={e => setSettings(s => ({ ...s, backup_method: parseInt(e.target.value) }))}
-                className="w-full bg-[#1a1a1a] border border-[#333] rounded px-3 py-1.5 text-sm text-gray-200 focus:border-[#bfa571] focus:outline-none">
-                <option value={0}>Interval (every N min)</option>
-                <option value={1}>File Watcher (on save)</option>
-              </select>
-            </div>
-          </div>
-
-          {/* Interval/Sleep + Max Backups + Volume + Save */}
-          <div className="grid grid-cols-3 gap-3">
-            {settings.backup_method === 0 ? (
-              <div>
-                <label className="block text-xs text-gray-400 mb-1 uppercase tracking-wider">Interval (min)</label>
-                <input type="number" min={1} value={settings.auto_backup_interval}
-                  onChange={e => setSettings(s => ({ ...s, auto_backup_interval: parseInt(e.target.value) || 1 }))}
-                  className="w-full bg-[#1a1a1a] border border-[#333] rounded px-3 py-1.5 text-sm text-gray-200 focus:border-[#bfa571] focus:outline-none" />
-              </div>
-            ) : (
-              <div>
-                <label className="block text-xs text-gray-400 mb-1 uppercase tracking-wider">Sleep (sec)</label>
-                <input type="number" min={1} value={settings.sleep_between_saves}
-                  onChange={e => setSettings(s => ({ ...s, sleep_between_saves: parseInt(e.target.value) || 1 }))}
-                  className="w-full bg-[#1a1a1a] border border-[#333] rounded px-3 py-1.5 text-sm text-gray-200 focus:border-[#bfa571] focus:outline-none" />
-              </div>
-            )}
-            <div>
-              <label className="block text-xs text-gray-400 mb-1 uppercase tracking-wider">Max Backups</label>
-              <input type="number" min={1} value={settings.max_backups}
-                onChange={e => setSettings(s => ({ ...s, max_backups: parseInt(e.target.value) || 1 }))}
-                className="w-full bg-[#1a1a1a] border border-[#333] rounded px-3 py-1.5 text-sm text-gray-200 focus:border-[#bfa571] focus:outline-none" />
-            </div>
-
-            {/* Volume Slider */}
-            <div>
-              <label className="block text-xs text-gray-400 mb-1 uppercase tracking-wider">Notification Vol: {settings.notification_volume}%</label>
-              <input
-                type="range"
-                min="0"
-                max="100"
-                value={settings.notification_volume}
-                onChange={e => setSettings(s => ({ ...s, notification_volume: parseInt(e.target.value) }))}
-                className="w-full h-2 bg-[#333] rounded-lg appearance-none cursor-pointer accent-[#bfa571]"
-              />
-            </div>
-
-            {/* Global Hotkeys */}
-            <div className="col-span-3 mt-2 pt-2 border-t border-[#333]">
-              <h4 className="text-xs font-bold text-[#bfa571] uppercase tracking-wider mb-2">Global Hotkeys</h4>
-              <div className="grid grid-cols-2 gap-3">
-                <KeybindInput
-                  label="Create Backup"
-                  value={settings.keybind_save}
-                  onChange={v => setSettings(s => ({ ...s, keybind_save: v }))}
-                />
-                <KeybindInput
-                  label="Load Latest Backup"
-                  value={settings.keybind_load}
-                  onChange={v => setSettings(s => ({ ...s, keybind_load: v }))}
-                />
-                <KeybindInput
-                  label="Start Auto Backup"
-                  value={settings.keybind_auto_start}
-                  onChange={v => setSettings(s => ({ ...s, keybind_auto_start: v }))}
-                />
-                <KeybindInput
-                  label="Stop Auto Backup"
-                  value={settings.keybind_auto_stop}
-                  onChange={v => setSettings(s => ({ ...s, keybind_auto_stop: v }))}
-                />
-              </div>
-            </div>
-
-            <div className="col-span-3 flex items-center justify-between mt-2 pt-2 border-t border-[#333]">
-              <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  id="safeLoad"
-                  checked={settings.quit_to_menu_before_load}
-                  onChange={e => setSettings(s => ({ ...s, quit_to_menu_before_load: e.target.checked }))}
-                  className="rounded border-[#333] bg-[#1a1a1a] text-[#bfa571] focus:ring-0 focus:ring-offset-0"
-                />
-                <label htmlFor="safeLoad" className="text-xs text-gray-400 uppercase tracking-wider cursor-pointer select-none">
-                  Safe Load (Quit first)
-                </label>
-              </div>
-
-              <button onClick={handleSaveSettings}
-                className={`py-1.5 px-6 rounded text-sm font-semibold border transition-all ${settingsSaved ? 'bg-green-800 border-green-600 text-green-300' : 'bg-[#2a2a3a] border-[#444] text-gray-300 hover:text-[#bfa571]'}`}>
-                {settingsSaved ? '✓ Saved' : 'Save Settings'}
+                {isPinned ? '★' : '☆'}
               </button>
             </div>
           </div>
         </div>
-      )}
+      </div>
+    );
+  };
 
-      {/* Pinned Backups */}
-      <div className="flex-1 min-h-0">
-        {renderTable('Pinned Backups', pinnedBackups)}
-        {renderTable('Regular Backups', regularBackups)}
+
+  return (
+    <div className="flex-1 h-full flex flex-col overflow-hidden inter-font p-6" style={{ fontFamily: "'Inter', sans-serif" }}>
+      
+      {/* Header Info Bar */}
+      <div className="flex justify-between items-center mb-6 px-2">
+        <div className="flex items-center gap-4">
+          <div className="flex flex-col">
+            <h2 className="text-xl fantasy-font text-gray-100 tracking-[0.2em] uppercase">Backup Archives</h2>
+            <div className="status-header-line w-24 mb-0 opacity-50"></div>
+          </div>
+          
+          <div className={`flex items-center gap-2 px-3 py-1 rounded-full border ${autoRunning ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-red-500/10 border-red-500/30'}`}>
+            <div className={`w-2 h-2 rounded-full ${autoRunning ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'}`} />
+            <span className={`text-[10px] fantasy-font tracking-widest uppercase font-bold ${autoRunning ? 'text-emerald-400' : 'text-red-400'}`}>
+              Auto-Backup {autoRunning ? 'Active' : 'Inactive'}
+            </span>
+          </div>
+        </div>
+        
+        {statusMsg && (
+          <div className="text-[10px] fantasy-font tracking-widest text-[#bfa571] animate-pulse bg-white/5 px-4 py-1 border border-[#bfa571]/20 rounded-sm italic">
+            {statusMsg}
+          </div>
+        )}
       </div>
 
-      {/* Bottom Buttons - Row 1 */}
-      <div className="flex gap-2 mt-3">
-        <button onClick={handleCreate} disabled={loading}
-          className={`${btnClass} bg-[#4a4a8a] hover:bg-[#5a5a9a] disabled:opacity-40`}>
-          {loading ? '...' : 'Save Backup'}
-        </button>
-        <button onClick={handleLoad} disabled={!selectedBackup || loading}
-          className={`${btnClass} bg-[#4a4a8a] hover:bg-[#5a5a9a] disabled:opacity-40`}>
-          Load Backup
-        </button>
-        <button onClick={refreshBackups}
-          className={`${btnClass} bg-[#4a4a8a] hover:bg-[#5a5a9a]`}>
-          Refresh
-        </button>
-        <button onClick={() => handleDelete()} disabled={!selectedBackup}
-          className={`${btnClass} bg-[#4a4a8a] hover:bg-[#5a5a9a] disabled:opacity-40`}>
-          Delete
-        </button>
-      </div>
+      <div className="flex-1 flex gap-8 overflow-hidden min-h-0">
+        
+        {/* Left Pane: Visual Archive Gallery */}
+        <div className="w-[350px] flex flex-col min-h-0 relative">
+          <div className="mb-4 flex gap-2">
+             <button 
+                onClick={() => setSettingsOpen(!settingsOpen)} 
+                className={`flex-1 py-2 text-[10px] fantasy-font tracking-[0.2em] uppercase border transition-all ${settingsOpen ? 'bg-[#bfa571] text-black border-[#bfa571]' : 'bg-black/40 text-gray-500 border-white/5 hover:border-white/20 hover:text-gray-300'}`}
+             >
+               {settingsOpen ? 'Close Settings' : 'Settings'}
+             </button>
+             <button 
+                onClick={refreshBackups} 
+                className="px-4 py-2 text-[10px] fantasy-font border border-white/5 text-gray-500 hover:text-white hover:bg-white/5 transition-all"
+             >
+               ↻
+             </button>
+          </div>
 
-      {/* Bottom Buttons - Row 2 */}
-      <div className="flex gap-2 mt-2 mb-2">
-        <button onClick={handleStartAuto} disabled={autoRunning}
-          className={`${btnClass} bg-[#2a6a2a] hover:bg-[#3a8a3a] disabled:opacity-40`}>
-          Start Auto Backup
-        </button>
-        <button onClick={handleStopAuto} disabled={!autoRunning}
-          className={`${btnClass} bg-[#333] hover:bg-[#444] disabled:opacity-40`}>
-          Stop Auto Backup
-        </button>
+          {/* Pinned section stays at top (not scrollable unless it's huge) */}
+          {pinnedBackups.length > 0 && (
+            <div className="shrink-0 mb-6">
+              <h3 className="text-[11px] fantasy-font text-[#bfa571] tracking-[0.3em] uppercase mb-4 px-1 flex items-center gap-3">
+                <span className="font-bold">Pinned Favorites</span>
+                <div className="flex-1 h-px bg-[#bfa571]/20" />
+              </h3>
+              <div className="space-y-3 max-h-[300px] overflow-y-auto custom-scrollbar pr-2">
+                {pinnedBackups.map((entry, i) => (
+                  <BackupCard key={entry.name} entry={entry} index={i} isPinned={true} />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Recent Archives section scrolls INDEPENDENTLY */}
+          <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+            <h3 className="text-[11px] fantasy-font text-gray-500 tracking-[0.3em] uppercase mb-4 px-1 flex items-center gap-3 shrink-0">
+              <span className="opacity-50 font-bold">Recent Archives</span>
+              <div className="flex-1 h-px bg-white/5" />
+            </h3>
+            
+            <div className="flex-1 overflow-y-auto custom-scrollbar pr-3 space-y-3 pb-4">
+              {regularBackups.length > 0 ? regularBackups.map((entry, i) => (
+                <BackupCard key={entry.name} entry={entry} index={i} isPinned={false} />
+              )) : (
+                <div className="p-10 text-center border border-dashed border-white/5 rounded-lg">
+                  <p className="text-gray-600 text-sm italic">No archives found.</p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="mt-6 flex flex-col gap-2">
+            <TabActionButton 
+              label={loading ? "Archiving..." : "Create New Backup"} 
+              onClick={handleCreate} 
+              disabled={loading}
+            />
+            <TabActionButton 
+              label={autoRunning ? "Stop Auto" : "Start Auto"} 
+              onClick={autoRunning ? handleStopAuto : handleStartAuto}
+              variant={autoRunning ? 'outline' : 'primary'}
+            />
+          </div>
+        </div>
+
+        {/* Right Pane: Selected Backup Details */}
+        <div className="flex-1 flex flex-col min-h-0 gap-2 relative">
+          
+          {/* Settings Overlay Layer */}
+          {settingsOpen && (
+            <div className="absolute inset-0 z-20 bg-black/90 backdrop-blur-md border border-white/10 p-8 overflow-y-auto custom-scrollbar flex flex-col gap-8">
+              <div className="flex justify-between items-center border-b border-[#bfa571]/30 pb-4">
+                <h3 className="text-xl fantasy-font text-[#bfa571] tracking-[0.2em] uppercase">Configuration</h3>
+                <button onClick={() => setSettingsOpen(false)} className="text-gray-500 hover:text-white transition-colors">✕</button>
+              </div>
+
+              {/* Path Settings */}
+              <div className="space-y-4">
+                <h4 className="text-xs fantasy-font text-gray-500 tracking-[0.2em] uppercase mb-4 border-l-2 border-[#bfa571] pl-3">Directories</h4>
+                <div className="grid gap-4">
+                  <div>
+                    <label className="block text-[10px] text-gray-500 mb-2 uppercase tracking-widest fantasy-font font-bold">Save File Location</label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={settings.save_directory}
+                        onChange={e => setSettings(s => ({ ...s, save_directory: e.target.value }))}
+                        className="flex-1 bg-black/40 border border-white/10 rounded-sm px-4 py-2 text-sm text-gray-200 focus:border-[#bfa571]/50 outline-none transition-all"
+                        placeholder="Path to game saves..."
+                      />
+                      <button onClick={handleAutoFind} className="px-4 bg-white/5 border border-white/10 text-[10px] fantasy-font hover:text-[#bfa571] hover:border-[#bfa571]/30 transition-all uppercase tracking-widest">Find</button>
+                      <button 
+                        onClick={() => handleBrowse('save')} 
+                        disabled={dirPicking}
+                        className="px-4 bg-white/5 border border-white/10 text-[10px] fantasy-font hover:text-[#bfa571] hover:border-[#bfa571]/30 transition-all uppercase tracking-widest disabled:opacity-50"
+                      >
+                        Browse
+                      </button>
+                    </div>
+                    {autoFindResults && (
+                      <div className="mt-2 border border-white/10 bg-black/60 rounded-sm overflow-hidden divide-y divide-white/5">
+                        {autoFindResults.map((r, i) => (
+                          <button 
+                            key={i} 
+                            className="w-full text-left px-4 py-2 hover:bg-[#bfa571]/10 text-xs text-gray-400 hover:text-[#bfa571] transition-all flex items-center gap-2"
+                            onClick={() => { setSettings(s => ({ ...s, save_directory: r.path })); setAutoFindResults(null); }}
+                          >
+                            <span className="text-[#bfa571] font-bold">{r.game}</span> {r.path}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div>
+                    <label className="block text-[10px] text-gray-500 mb-2 uppercase tracking-widest fantasy-font font-bold">Backup Archive Path</label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={settings.backup_directory}
+                        onChange={e => setSettings(s => ({ ...s, backup_directory: e.target.value }))}
+                        className="flex-1 bg-black/40 border border-white/10 rounded-sm px-4 py-2 text-sm text-gray-200 focus:border-[#bfa571]/50 outline-none transition-all"
+                        placeholder="Path to backup storage..."
+                      />
+                      <button 
+                        onClick={() => handleBrowse('backup')} 
+                        disabled={dirPicking}
+                        className="px-4 bg-white/5 border border-white/10 text-[10px] fantasy-font hover:text-[#bfa571] hover:border-[#bfa571]/30 transition-all uppercase tracking-widest disabled:opacity-50"
+                      >
+                        Browse
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Behavior Settings */}
+              <div className="grid grid-cols-2 gap-8">
+                 <div className="space-y-4">
+                    <h4 className="text-xs fantasy-font text-gray-500 tracking-[0.2em] uppercase mb-4 border-l-2 border-[#bfa571] pl-3">Archive Behavior</h4>
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-[10px] text-gray-500 mb-2 uppercase tracking-widest fantasy-font font-bold">Active Save File</label>
+                        <select
+                          value={settings.save_file_name}
+                          onChange={e => setSettings(s => ({ ...s, save_file_name: e.target.value }))}
+                          className="w-full bg-black/40 border border-white/10 rounded-sm px-3 py-2 text-sm text-gray-300 outline-none focus:border-[#bfa571]/50"
+                        >
+                          {availableSaveFiles.map(f => <option key={f} value={f}>{f}</option>)}
+                        </select>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-[10px] text-gray-500 mb-2 uppercase tracking-widest fantasy-font font-bold">Method</label>
+                          <select 
+                            value={settings.backup_method}
+                            onChange={e => setSettings(s => ({ ...s, backup_method: parseInt(e.target.value) }))}
+                            className="w-full bg-black/40 border border-white/10 rounded-sm px-3 py-2 text-sm text-gray-300 outline-none focus:border-[#bfa571]/50"
+                          >
+                            <option value={0}>Interval</option>
+                            <option value={1}>Watcher</option>
+                          </select>
+                        </div>
+                        <div>
+                           <label className="block text-[10px] text-gray-500 mb-2 uppercase tracking-widest fantasy-font font-bold">{settings.backup_method === 0 ? 'Mins' : 'Sleep'}</label>
+                           <input 
+                             type="number" 
+                             value={settings.backup_method === 0 ? settings.auto_backup_interval : settings.sleep_between_saves}
+                             onChange={e => setSettings(s => ({ ...s, [settings.backup_method === 0 ? 'auto_backup_interval' : 'sleep_between_saves']: parseInt(e.target.value) }))}
+                             className="w-full bg-black/40 border border-white/10 rounded-sm px-3 py-2 text-sm text-gray-300"
+                           />
+                        </div>
+                      </div>
+
+                      {/* Max Backups Slider */}
+                      <div>
+                        <div className="flex justify-between mb-2">
+                          <label className="block text-[10px] text-gray-500 uppercase tracking-widest fantasy-font font-bold">Max Recent Archives</label>
+                          <span className="text-xs text-[#bfa571] font-bold">{settings.max_backups}</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="5"
+                          max="100"
+                          step="5"
+                          value={settings.max_backups}
+                          onChange={e => setSettings(s => ({ ...s, max_backups: parseInt(e.target.value) }))}
+                          className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-[#bfa571]"
+                        />
+                      </div>
+
+                      {/* Notification Volume Slider */}
+                      <div>
+                        <div className="flex justify-between mb-2">
+                          <label className="block text-[10px] text-gray-500 uppercase tracking-widest fantasy-font font-bold">Notification Volume</label>
+                          <span className="text-xs text-[#bfa571] font-bold">{settings.notification_volume}%</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="0"
+                          max="100"
+                          value={settings.notification_volume}
+                          onChange={e => setSettings(s => ({ ...s, notification_volume: parseInt(e.target.value) }))}
+                          className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-[#bfa571]"
+                        />
+                      </div>
+
+                      <div className="flex items-center gap-3 p-3 bg-white/5 border border-white/5 rounded-sm">
+                        <input
+                          type="checkbox"
+                          id="safeLoad"
+                          checked={settings.quit_to_menu_before_load}
+                          onChange={e => setSettings(s => ({ ...s, quit_to_menu_before_load: e.target.checked }))}
+                          className="w-4 h-4 bg-black border-white/20 text-[#bfa571] rounded focus:ring-0"
+                        />
+                        <label htmlFor="safeLoad" className="text-xs fantasy-font tracking-widest text-gray-300 cursor-pointer uppercase">
+                          Safe Load (Return to Menu)
+                        </label>
+                      </div>
+                    </div>
+                 </div>
+
+                 <div className="space-y-4">
+                    <h4 className="text-xs fantasy-font text-gray-500 tracking-[0.2em] uppercase mb-4 border-l-2 border-[#bfa571] pl-3">Global Hotkeys</h4>
+                    <div className="grid grid-cols-1 gap-4">
+                      <KeybindInput label="Create Archive" value={settings.keybind_save} onChange={v => setSettings(s => ({ ...s, keybind_save: v }))} />
+                      <KeybindInput label="Restore Latest" value={settings.keybind_load} onChange={v => setSettings(s => ({ ...s, keybind_load: v }))} />
+                      <KeybindInput label="Start Auto" value={settings.keybind_auto_start} onChange={v => setSettings(s => ({ ...s, keybind_auto_start: v }))} />
+                      <KeybindInput label="Stop Auto" value={settings.keybind_auto_stop} onChange={v => setSettings(s => ({ ...s, keybind_auto_stop: v }))} />
+                    </div>
+                 </div>
+              </div>
+
+              <div className="mt-auto pt-8 border-t border-white/10 flex justify-end">
+                <button 
+                  onClick={handleSaveSettings}
+                  className={`px-10 py-3 fantasy-font tracking-[0.2em] uppercase text-xs font-bold transition-all border ${settingsSaved ? 'bg-emerald-900/40 text-emerald-400 border-emerald-500' : 'bg-[#bfa571] text-black border-[#bfa571] hover:brightness-110'}`}
+                >
+                  {settingsSaved ? 'Settings Saved' : 'Commit Changes'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Main Detail View */}
+          {selectedBackup ? (
+            <>
+              {/* Screenshot Frame - Maximized to fill space */}
+              <div className="relative group rounded-lg overflow-hidden border border-[#bfa571]/20 shadow-2xl bg-black/50 aspect-video flex-1 min-h-0">
+                {screenshotUrl ? (
+                  <img src={screenshotUrl} alt="Preview" className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" onError={() => setScreenshotUrl(null)} />
+                ) : (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center opacity-20">
+                    <span className="text-6xl mb-4">🖼️</span>
+                    <span className="fantasy-font tracking-[0.4em] uppercase text-sm">No Preview Captured</span>
+                  </div>
+                )}
+                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                <div className="absolute bottom-6 left-6 opacity-0 group-hover:opacity-100 transition-all translate-y-4 group-hover:translate-y-0">
+                   <h3 className="text-2xl fantasy-font text-[#bfa571] tracking-widest uppercase mb-1 drop-shadow-lg">
+                     {selectedBackup.replace('.zip', '')}
+                   </h3>
+                   <p className="text-sm text-gray-300 tracking-[0.1em]">
+                     {[...pinnedBackups, ...regularBackups].find(b => b.name === selectedBackup)?.date || ''}
+                   </p>
+                </div>
+              </div>
+
+              {/* Action Grid - Pushed to bottom with minimal gap */}
+              <div className="mt-4 shrink-0">
+                <div className="grid grid-cols-2 gap-3">
+                  <TabActionButton 
+                    label="Restore Selected" 
+                    onClick={handleLoad} 
+                    disabled={loading} 
+                  />
+                  <TabActionButton 
+                    label="Rename" 
+                    onClick={() => handleRename(selectedBackup)} 
+                    variant="outline"
+                  />
+                  <TabActionButton 
+                    label="Toggle Pin" 
+                    onClick={() => handlePin(selectedBackup, !pinnedBackups.some(b => b.name === selectedBackup))} 
+                    variant="outline"
+                  />
+                  <TabActionButton 
+                    label="Delete" 
+                    onClick={() => handleDelete()} 
+                    variant="danger"
+                  />
+                </div>
+              </div>
+
+            </>
+          ) : (
+            <div className="flex-1 flex flex-col items-center justify-center opacity-30 border border-dashed border-white/10 rounded-lg bg-black/20">
+               <div className="w-16 h-16 border-2 border-[#bfa571]/30 rounded-full flex items-center justify-center mb-6">
+                 <div className="w-8 h-8 bg-[#bfa571]/20 rotate-45" />
+               </div>
+               <h3 className="fantasy-font text-xl tracking-[0.3em] uppercase mb-2">Awaiting Selection</h3>
+               <p className="text-xs tracking-widest uppercase">Select an archive from the left to manage</p>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Context Menu */}
       {ctxMenu && (
-        <div className="fixed z-50 rounded border border-[#444] bg-[#1e1e1e] shadow-2xl overflow-hidden min-w-[150px]"
-          style={{ left: ctxMenu.x, top: ctxMenu.y, fontFamily: "'Inter', sans-serif" }}
+        <div className="fixed z-50 rounded border border-white/10 bg-[#0c0c0c] shadow-[0_10px_40px_rgba(0,0,0,0.8)] overflow-hidden min-w-[180px] backdrop-blur-xl"
+          style={{ left: ctxMenu.x, top: ctxMenu.y }}
           onClick={e => e.stopPropagation()}>
-          <button className="w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-[#2a2520] hover:text-[#bfa571] transition-colors"
+          <button className="w-full text-left px-5 py-3 text-xs fantasy-font tracking-widest uppercase text-gray-400 hover:bg-[#bfa571]/10 hover:text-[#bfa571] transition-all flex items-center gap-3"
             onClick={() => { handlePin(ctxMenu.item.name, !ctxMenu.item.isPinned); setCtxMenu(null); }}>
-            📌 {ctxMenu.item.isPinned ? 'Unpin' : 'Pin'}
+            {ctxMenu.item.isPinned ? 'Unpin Archive' : 'Pin Archive'}
           </button>
-          <button className="w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-[#2a2520] hover:text-[#bfa571] transition-colors"
+          <button className="w-full text-left px-5 py-3 text-xs fantasy-font tracking-widest uppercase text-gray-400 hover:bg-[#bfa571]/10 hover:text-[#bfa571] transition-all flex items-center gap-3"
             onClick={() => { handleRename(ctxMenu.item.name); setCtxMenu(null); }}>
-            ✏️ Rename
+            Rename Archive
           </button>
-          <button className="w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-[#1e2e1e] hover:text-green-400 transition-colors"
+          <button className="w-full text-left px-5 py-3 text-xs fantasy-font tracking-widest uppercase text-gray-400 hover:bg-emerald-500/10 hover:text-emerald-400 transition-all flex items-center gap-3 border-t border-white/5"
             onClick={() => { setSelectedBackup(ctxMenu.item.name); handleLoad(); setCtxMenu(null); }}>
-            📂 Load
+            Restore Now
           </button>
-          <div className="border-t border-[#333]" />
-          <button className="w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-[#2a1515] transition-colors"
+          <div className="border-t border-white/5" />
+          <button className="w-full text-left px-5 py-3 text-xs fantasy-font tracking-widest uppercase text-red-400 hover:bg-red-500/10 transition-all flex items-center gap-3"
             onClick={() => { handleDelete(ctxMenu.item.name); setCtxMenu(null); }}>
-            🗑️ Delete
+            Delete Forever
           </button>
         </div>
       )}
@@ -759,7 +795,7 @@ const BackupTab: React.FC<Props> = ({ game = '' }) => {
 
       {inputModal && (
         <InputModal
-          key={inputModal.initialValue} // Force re-mount to reset value
+          key={inputModal.initialValue}
           open={inputModal.open}
           title={inputModal.title}
           initialValue={inputModal.initialValue}

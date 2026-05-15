@@ -57,7 +57,16 @@ class AutoStartModel(BaseModel):
 
 @router.get("/settings")
 def get_settings(game: str = ""):
-    return backup_service.load_settings(game_key=game)
+    settings = backup_service.load_settings(game_key=game)
+    # Ensure hotkeys are initialized for this game context
+    backup_service.initialize_hotkeys(game_key=game)
+    return settings
+
+
+@router.post("/initialize")
+def initialize_backup(game: str = ""):
+    backup_service.initialize_hotkeys(game_key=game)
+    return {"ok": True}
 
 
 @router.post("/settings")

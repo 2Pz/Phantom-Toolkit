@@ -568,9 +568,18 @@ def save_settings(settings: dict[str, Any], game_key: str = "") -> None:
     main_key = f"backup_settings_{game_key}" if game_key else "backup_settings"
     config_mgr.set(main_key, settings)
 
-    # Apply hotkeys if this is the active game context or global
-    # For now, we only support one active set of hotkeys (the last saved/loaded ones)
+    # Apply hotkeys
     _update_hotkeys(settings, game_key)
+
+    # If auto-backup is running for this game, restart it to apply new settings
+    global _auto_backup_running_game
+    if _auto_backup_running_game == game_key:
+        stop_auto_backup()
+        start_auto_backup(settings, game_key)
+
+    # Trigger immediate cleanup with new settings
+    with contextlib.suppress(Exception):
+        _cleanup_old_backups(settings)
 
 
 # ---------------------------------------------------------------------------
@@ -621,19 +630,36 @@ def list_backups(
     pinned: list[dict] = []
     regular: list[dict] = []
 
-    for fname in sorted(os.listdir(backup_dir), reverse=True):
+    # Get all zip files with their stats
+    entries: list[dict] = []
+    for fname in os.listdir(backup_dir):
         if not fname.endswith(".zip"):
             continue
         fpath = os.path.join(backup_dir, fname)
-        stat = os.stat(fpath)
-        entry = {
-            "name": fname,
-            "date": datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M:%S"),
-            "size": stat.st_size,
-            "isPinned": fname in pinned_names,
-            "hasScreenshot": _zip_has_screenshot(fpath),
-        }
-        if fname in pinned_names:
+        try:
+            stat = os.stat(fpath)
+            entries.append(
+                {
+                    "name": fname,
+                    "date": datetime.fromtimestamp(stat.st_mtime).strftime(
+                        "%Y-%m-%d %H:%M:%S"
+                    ),
+                    "mtime": stat.st_mtime,
+                    "size": stat.st_size,
+                    "isPinned": fname in pinned_names,
+                    "hasScreenshot": _zip_has_screenshot(fpath),
+                }
+            )
+        except Exception:
+            continue
+
+    # Sort all by mtime descending
+    entries.sort(key=lambda x: x["mtime"], reverse=True)
+
+    for entry in entries:
+        # Remove helper field
+        entry.pop("mtime")
+        if entry["name"] in pinned_names:
             pinned.append(entry)
         else:
             regular.append(entry)
@@ -653,6 +679,7 @@ def create_backup(
     settings: dict[str, Any] | None = None,
     take_screenshot: bool = True,
     game_key: str = "",
+    screenshot_data: bytes | None = None,
 ) -> dict[str, str]:
     """Create a manual backup. Returns {"name": ..., "path": ...}."""
     if settings is None:
@@ -692,8 +719,8 @@ def create_backup(
         else zip_path
     )
 
-    screenshot_data: bytes | None = None
-    if take_screenshot:
+    # Use provided screenshot or capture a new one
+    if screenshot_data is None and take_screenshot:
         screenshot_data = capture_screenshot()
 
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
@@ -730,6 +757,29 @@ def load_backup(
         raise RuntimeError("Save directory not set")
     if not backup_dir_ui:
         raise RuntimeError("Backup directory not set")
+
+    # ---- Centralized "Safe Load" logic ----
+    if settings.get("quit_to_menu_before_load", False) and game_key:
+        try:
+            from phantom_backend.games.registry import GameRegistry
+            from phantom_backend.services.actions import ActionsService
+
+            reg = GameRegistry()
+            adapter = reg.get(game_key)
+            mem = adapter.make_memory()
+            try:
+                resolver = adapter.make_resolver(mem)
+                if mem.process_handle and mem.base_address != 0:
+                    ActionsService(
+                        mem=mem, resolver=resolver, game_key=game_key
+                    ).quit_to_menu()
+                    # Wait 1 second (user requested 1s instead of 5s)
+                    time.sleep(1)
+            finally:
+                mem.close()
+        except Exception:
+            # Game might not be running or attached, proceed anyway
+            pass
 
     zip_path = os.path.join(backup_dir, name)
     if not os.path.isfile(zip_path):
@@ -963,13 +1013,18 @@ def start_auto_backup(
                         break
 
                     try:
-                        # Force the game to save
+                        # 1. Force the game to save
                         _do_request_save(game_key)
-                        # Wait for save to complete
+                        # 2. Capture screenshot IMMEDIATELY for accuracy
+                        ss_data = capture_screenshot()
+                        # 3. Wait for save to complete
                         time.sleep(2)
-                        # Create the backup
+                        # 4. Create the backup
                         create_backup(
-                            settings=settings, take_screenshot=True, game_key=game_key
+                            settings=settings,
+                            take_screenshot=True,
+                            game_key=game_key,
+                            screenshot_data=ss_data,
                         )
                     except Exception:
                         pass
@@ -1012,25 +1067,31 @@ def start_auto_backup(
                     if not st["attached"]:
                         break
                     if not st["loaded"]:
-                        break
-
+                        continue
                     try:
-                        # Request save from game
-                        _do_request_save(game_key)
-                        # Wait for save to write
-                        time.sleep(sleep_sec)
-                        # Check if file changed
+                        # 1. Check if file changed since last backup
                         current_mtime = _get_watch_mtime()
+
                         if current_mtime > last_mtime:
+                            # 2. Change detected!
+                            # Note: Screenshot might be slightly late but user prefers passive watching.
+                            ss_data = capture_screenshot()
+
                             last_mtime = current_mtime
                             create_backup(
                                 settings=settings,
                                 take_screenshot=True,
                                 game_key=game_key,
+                                screenshot_data=ss_data,
                             )
+                            # 3. Respect the user's "cooldown" sleep after a successful backup
+                            _auto_backup_stop_event.wait(sleep_sec)
+
                     except Exception:
                         pass
-                    _auto_backup_stop_event.wait(sleep_sec)
+
+                    # 4. Fast polling for the change (e.g. every 500ms)
+                    _auto_backup_stop_event.wait(0.5)
             finally:
                 if _auto_backup_running_game == game_key:
                     _auto_backup_running_game = ""
@@ -1139,61 +1200,50 @@ def _check_game_status(game_key: str) -> dict[str, bool]:
 
 
 def initialize_hotkeys(game_key: str = "") -> None:
-    """Load settings and register hotkeys on startup.
+    """Load all settings and register hotkeys for all games.
 
-    If game_key is empty (startup), we try to load ALL known settings files
-    to register hotkeys for all games.
+    We always clear and re-register everything to ensure a consistent state
+    across different game contexts.
     """
-    if game_key:
-        settings = load_settings(game_key)
-        _update_hotkeys(settings, game_key)
-        return
-
-    # Startup case: scan for all backup_settings*.json
     if keyboard is None:
         return
 
-    # Clear once at start
+    # Clear everything once
     with contextlib.suppress(Exception):
         keyboard.unhook_all()
 
-    # Always load default (global)
+    # 1. Register Global/Default
     settings = load_settings("")
     _register_hotkeys_for_settings(settings, "")
 
-    # Scan for others
-    # Expected path: .../backup_settings_{game_key}.json
-    try:
-        conf_dir = _settings_path("").parent
-        if not conf_dir.exists():
-            return
-
-        for f in conf_dir.glob("backup_settings_*.json"):
-            fname = f.name
-            if fname == "backup_settings.json":
-                continue
-            # Extract game key
-            # backup_settings_eldenring.json -> eldenring
-            # remove prefix "backup_settings_" and suffix ".json"
-            g_key = fname[16:-5]
+    # 2. Register all game-specific settings from ConfigManager
+    config_mgr = ConfigManager()
+    for key in config_mgr:
+        if key.startswith("backup_settings_"):
+            g_key = key[16:]
             if g_key:
                 s = load_settings(g_key)
                 _register_hotkeys_for_settings(s, g_key)
 
+    # 3. Fallback: Register from legacy files if they still exist
+    try:
+        conf_dir = _settings_path("").parent
+        if conf_dir.exists():
+            for f in conf_dir.glob("backup_settings_*.json"):
+                fname = f.name
+                if fname == "backup_settings.json":
+                    continue
+                g_key = fname[16:-5]
+                if g_key:
+                    s = load_settings(g_key)
+                    _register_hotkeys_for_settings(s, g_key)
     except Exception:
         pass
 
 
 def _update_hotkeys(settings: dict[str, Any], game_key: str) -> None:
-    """Register global hotkeys based on settings (clears previous)."""
-    if keyboard is None:
-        return
-
-    # Clear existing hotkeys managed by us
-    with contextlib.suppress(Exception):
-        keyboard.unhook_all()
-
-    _register_hotkeys_for_settings(settings, game_key)
+    """Trigger a full re-initialization of all hotkeys."""
+    initialize_hotkeys()
 
 
 def _register_hotkeys_for_settings(settings: dict[str, Any], game_key: str) -> None:

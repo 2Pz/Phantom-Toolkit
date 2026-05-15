@@ -26,18 +26,18 @@ const EquipmentGrid: React.FC<EquipmentGridProps> = ({ slots, selectedSlot, onSe
   );
 
   const renderSpells = () => (
-    <div className="mt-8 flex flex-col items-center">
-      <div className="flex gap-4 items-center mb-2">
-        <div className="h-px w-8 bg-white/10" />
-        <h4 className="text-[10px] fantasy-font text-gray-500 uppercase tracking-[0.3em]">Spells / Memory Slots</h4>
-        <div className="h-px w-8 bg-white/10" />
+    <div className="mt-4 flex flex-col items-center">
+      <div className="flex gap-2 items-center mb-1">
+        <div className="h-px w-4 bg-white/10" />
+        <h4 className="text-[9px] fantasy-font text-gray-400 uppercase tracking-[0.2em]">Spells / Memory Slots</h4>
+        <div className="h-px w-4 bg-white/10" />
       </div>
-      <div className="flex flex-col gap-1">
-        <div className="flex gap-1">
-          {[1, 2, 3, 4, 5, 6, 7].map(i => renderSlot(`spell_${i}`, SlotType.SPELL, "w-14 h-14 md:w-16 md:h-16"))}
+      <div className="flex flex-col gap-0.5">
+        <div className="flex gap-0.5">
+          {[1, 2, 3, 4, 5, 6, 7].map(i => renderSlot(`spell_${i}`, SlotType.SPELL, "w-10 h-10"))}
         </div>
-        <div className="flex gap-1">
-          {[8, 9, 10, 11, 12, 13, 14].map(i => renderSlot(`spell_${i}`, SlotType.SPELL, "w-14 h-14 md:w-16 md:h-16"))}
+        <div className="flex gap-0.5">
+          {[8, 9, 10, 11, 12, 13, 14].map(i => renderSlot(`spell_${i}`, SlotType.SPELL, "w-10 h-10"))}
         </div>
       </div>
     </div>
@@ -45,7 +45,7 @@ const EquipmentGrid: React.FC<EquipmentGridProps> = ({ slots, selectedSlot, onSe
 
   if (game === 'DARK_SOULS_3') {
     return (
-      <div className="relative flex flex-col gap-1 p-8 bg-[#1a1a1a]/90 backdrop-blur-md border border-white/10 rounded-md shadow-[0_20px_50px_rgba(0,0,0,0.5)]">
+      <div className="relative flex flex-col gap-0.5 p-4 bg-[#1a1a1a]/90 backdrop-blur-md border border-white/10 rounded-md shadow-2xl">
         {/* Row 1: Right Hand Weapons + Arrows */}
         <div className="flex gap-1 items-end">
           <div className="flex gap-1">
@@ -115,7 +115,7 @@ const EquipmentGrid: React.FC<EquipmentGridProps> = ({ slots, selectedSlot, onSe
 
   // Elden Ring Layout (Default)
   return (
-    <div className="flex flex-col gap-1 p-8 bg-[#1a1a1a]/90 backdrop-blur-md border border-white/10 rounded-md shadow-[0_20px_50px_rgba(0,0,0,0.5)]">
+    <div className="flex flex-col gap-0.5 p-4 bg-[#1a1a1a]/90 backdrop-blur-md border border-white/10 rounded-md shadow-2xl">
       <div className="flex gap-1">
         <div className="flex gap-1">
           {[1, 2, 3].map(i => renderSlot(`weapon_r_${i}`, SlotType.WEAPON_R))}
@@ -151,15 +151,15 @@ const EquipmentGrid: React.FC<EquipmentGridProps> = ({ slots, selectedSlot, onSe
         {[6, 7, 8, 9, 10].map(i => renderSlot(`quick_2_${i}`, SlotType.QUICK_ITEM))}
       </div>
 
-      <div className="mt-6 flex flex-col items-center">
-        <div className="flex gap-4 items-center mb-2">
-          <div className="h-px w-8 bg-white/10" />
-          <h4 className="text-[10px] fantasy-font text-gray-500 uppercase tracking-[0.3em]">Wondrous Physick Mix</h4>
-          <div className="h-px w-8 bg-white/10" />
+      <div className="mt-4 flex flex-col items-center">
+        <div className="flex gap-2 items-center mb-1">
+          <div className="h-px w-4 bg-white/10" />
+          <h4 className="text-[9px] fantasy-font text-gray-400 uppercase tracking-[0.2em]">Wondrous Physick</h4>
+          <div className="h-px w-4 bg-white/10" />
         </div>
         <div className="flex gap-2 justify-center">
-          {renderSlot('physick_tear_1', SlotType.PHYSICK)}
-          {renderSlot('physick_tear_2', SlotType.PHYSICK)}
+          {renderSlot('physick_tear_1', SlotType.PHYSICK, "w-10 h-10")}
+          {renderSlot('physick_tear_2', SlotType.PHYSICK, "w-10 h-10")}
         </div>
       </div>
 

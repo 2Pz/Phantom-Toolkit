@@ -50,6 +50,12 @@ class ConfigManager:
         self._data[key] = value
         self._save_config()
 
+    def keys(self):
+        return self._data.keys()
+
+    def __iter__(self):
+        return iter(self._data.keys())
+
     @property
     def last_save_dir(self) -> str:
         return self.get("last_save_dir", "")
