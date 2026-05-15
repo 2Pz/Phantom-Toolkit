@@ -5,7 +5,7 @@ import {
   listBackups, createBackup, loadBackup, deleteBackup,
   pinBackup, renameBackup, getScreenshotUrl,
   startAutoBackup, stopAutoBackup, getAutoBackupStatus,
-  listSaveFiles, browseDirectory,
+  listSaveFiles, browseDirectory, setActiveBackup,
 } from '../api';
 import { ConfirmationModal, InputModal } from './Modal';
 import { TabActionButton } from '../App';
@@ -216,6 +216,12 @@ const BackupTab: React.FC<Props> = ({ game = '' }) => {
     }
   }, [selectedBackup, pinnedBackups, regularBackups, game]);
 
+  // Sync active selection to backend for global hotkeys
+  useEffect(() => {
+    if (selectedBackup) {
+      setActiveBackup(selectedBackup, game).catch(() => { });
+    }
+  }, [selectedBackup, game]);
   const handleSaveSettings = async () => {
     try {
       await saveBackupSettings(settings, game);
@@ -271,7 +277,6 @@ const BackupTab: React.FC<Props> = ({ game = '' }) => {
 
   const handleLoad = async () => {
     if (!selectedBackup) return;
-    
     // Centralized logic is now in the backend. 
     // If "Safe Load" is enabled, the backend will trigger quitToMenu() and wait 1s.
     const isSafeLoad = settings.quit_to_menu_before_load;

@@ -680,10 +680,18 @@ def create_backup(
     take_screenshot: bool = True,
     game_key: str = "",
     screenshot_data: bytes | None = None,
+    request_save: bool = True,
 ) -> dict[str, str]:
     """Create a manual backup. Returns {"name": ..., "path": ...}."""
     if settings is None:
         settings = load_settings(game_key)
+
+    if request_save and game_key:
+        st = _check_game_status(game_key)
+        if st["attached"] and st["loaded"]:
+            _do_request_save(game_key)
+            # Wait for save to complete
+            time.sleep(1)
 
     save_dir_ui = settings.get("save_directory", "")
     backup_dir_ui = settings.get("backup_directory", "")
@@ -748,6 +756,17 @@ def load_backup(
     if settings is None:
         settings = load_settings(game_key)
 
+    # Handle "Safe Load" (Quit to Menu)
+    if settings.get("quit_to_menu_before_load", False) and game_key:
+        st = _check_game_status(game_key)
+        if st["attached"] and st["loaded"]:
+            try:
+                _do_quit_to_menu(game_key)
+                # Wait for the menu to load
+                time.sleep(1)
+            except Exception:
+                pass
+
     save_dir_ui = settings.get("save_directory", "")
     backup_dir_ui = settings.get("backup_directory", "")
     save_dir = _access_path(save_dir_ui)
@@ -802,6 +821,24 @@ def load_backup(
 
     _play_notification("load", game_key=game_key)
     return {"restored": name, "files": restored}
+
+
+def _do_quit_to_menu(game_key: str) -> None:
+    """Call quit_to_menu to return the game to the main menu."""
+    if not game_key:
+        return
+    with contextlib.suppress(Exception):
+        from phantom_backend.games.registry import GameRegistry
+        from phantom_backend.services.actions import ActionsService
+
+        reg = GameRegistry()
+        adapter = reg.get(game_key)
+        mem = adapter.make_memory()
+        try:
+            resolver = adapter.make_resolver(mem)
+            ActionsService(mem=mem, resolver=resolver, game_key=game_key).quit_to_menu()
+        finally:
+            mem.close()
 
 
 def delete_backup(
@@ -938,6 +975,7 @@ _auto_backup_thread: threading.Thread | None = None
 _auto_backup_stop_event = threading.Event()
 _auto_backup_running_game: str = ""
 _auto_backup_lock = threading.Lock()
+_active_backups: dict[str, str] = {}  # game_key -> backup_name
 
 
 def is_auto_backup_running() -> dict[str, Any]:
@@ -1120,6 +1158,12 @@ def stop_auto_backup() -> dict[str, bool]:
     return {"stopped": True}
 
 
+def set_active_backup(game_key: str, name: str) -> dict[str, bool]:
+    global _active_backups
+    _active_backups[game_key] = name
+    return {"ok": True}
+
+
 # ---------------------------------------------------------------------------
 # Notification Service (Inline for simplicity or import)
 # ---------------------------------------------------------------------------
@@ -1200,10 +1244,10 @@ def _check_game_status(game_key: str) -> dict[str, bool]:
 
 
 def initialize_hotkeys(game_key: str = "") -> None:
-    """Load all settings and register hotkeys for all games.
+    """Load settings and register hotkeys on startup or update.
 
-    We always clear and re-register everything to ensure a consistent state
-    across different game contexts.
+    If game_key is provided, we still rebuild EVERYTHING to ensure all games
+    keep their hotkeys active (keyboard.unhook_all is global).
     """
     if keyboard is None:
         return
@@ -1212,37 +1256,44 @@ def initialize_hotkeys(game_key: str = "") -> None:
     with contextlib.suppress(Exception):
         keyboard.unhook_all()
 
-    # 1. Register Global/Default
+    # 1. Load global settings (empty game key)
     settings = load_settings("")
     _register_hotkeys_for_settings(settings, "")
 
-    # 2. Register all game-specific settings from ConfigManager
-    config_mgr = ConfigManager()
-    for key in config_mgr:
-        if key.startswith("backup_settings_"):
-            g_key = key[16:]
-            if g_key:
-                s = load_settings(g_key)
-                _register_hotkeys_for_settings(s, g_key)
-
-    # 3. Fallback: Register from legacy files if they still exist
+    # 2. Scan ConfigManager for all game-specific backup settings
     try:
-        conf_dir = _settings_path("").parent
-        if conf_dir.exists():
-            for f in conf_dir.glob("backup_settings_*.json"):
-                fname = f.name
-                if fname == "backup_settings.json":
-                    continue
-                g_key = fname[16:-5]
+        config_mgr = ConfigManager()
+        # config_mgr._data contains all keys
+        for key in list(config_mgr._data.keys()):
+            if key.startswith("backup_settings_"):
+                g_key = key[16:]
                 if g_key:
                     s = load_settings(g_key)
                     _register_hotkeys_for_settings(s, g_key)
     except Exception:
         pass
 
+    # 3. Migration Fallback: Scan for old files (if any haven't been migrated yet)
+    try:
+        conf_dir = _settings_path("").parent
+        if not conf_dir.exists():
+            return
+
+        for f in conf_dir.glob("backup_settings_*.json"):
+            fname = f.name
+            if fname == "backup_settings.json":
+                continue
+            g_key = fname[16:-5]
+            if g_key:
+                # load_settings handles migration into ConfigManager
+                s = load_settings(g_key)
+                _register_hotkeys_for_settings(s, g_key)
+    except Exception:
+        pass
+
 
 def _update_hotkeys(settings: dict[str, Any], game_key: str) -> None:
-    """Trigger a full re-initialization of all hotkeys."""
+    """Register global hotkeys based on settings (clears and rebuilds all)."""
     initialize_hotkeys()
 
 
@@ -1299,18 +1350,24 @@ def _register_hotkeys_for_settings(settings: dict[str, Any], game_key: str) -> N
 
 
 def _load_latest_backup_callback(settings: dict[str, Any], game_key: str) -> None:
-    """Callback to load the most recent backup."""
-    # We need to find the latest backup
+    """Callback to load the active (selected) or most recent backup."""
+    # 1. Try the active (selected) backup first
+    active = _active_backups.get(game_key)
+    if active:
+        backup_dir = _access_path(settings.get("backup_directory", ""))
+        if os.path.isfile(os.path.join(backup_dir, active)):
+            load_backup(active, settings, game_key)
+            return
+
+    # 2. Fallback to finding the latest backup
     backups = list_backups(settings, game_key)
     # Combine pinned and regular, sort by date desc
     all_backups = backups.get("pinned", []) + backups.get("regular", [])
     if not all_backups:
         return
 
-    # Sort by date string desc (YYYY-MM-DD HH:MM:SS)
+    # Sort by name desc (backup_YYYYMMDD_HHMMSS.zip)
     all_backups.sort(key=lambda x: x["name"], reverse=True)
     latest = all_backups[0]["name"]
 
-    # Check quit to menu setting embedded in load_backup logic or handle here?
-    # load_backup checks settings.
     load_backup(latest, settings, game_key)
