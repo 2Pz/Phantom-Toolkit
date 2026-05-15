@@ -110,7 +110,6 @@ const BackupTab: React.FC<Props> = ({ game = '' }) => {
 
   // Auto-backup
   const [autoRunning, setAutoRunning] = useState(false);
-  const pollRef = useRef<number | null>(null);
   const lastNewestRef = useRef<string | null>(null);
 
   // Status
@@ -374,7 +373,7 @@ const BackupTab: React.FC<Props> = ({ game = '' }) => {
 
   // ---- Sub-components ----
 
-  const BackupCard: React.FC<{ entry: BackupEntry, index: number, isPinned: boolean }> = ({ entry, index, isPinned }) => {
+  const BackupCard: React.FC<{ entry: BackupEntry, isPinned: boolean }> = ({ entry, isPinned }) => {
     const isSelected = selectedBackup === entry.name;
     return (
       <div
@@ -477,8 +476,8 @@ const BackupTab: React.FC<Props> = ({ game = '' }) => {
                 <div className="flex-1 h-px bg-[#bfa571]/20" />
               </h3>
               <div className="space-y-3 max-h-[300px] overflow-y-auto custom-scrollbar pr-2">
-                {pinnedBackups.map((entry, i) => (
-                  <BackupCard key={entry.name} entry={entry} index={i} isPinned={true} />
+                {pinnedBackups.map((entry) => (
+                  <BackupCard key={entry.name} entry={entry} isPinned={true} />
                 ))}
               </div>
             </div>
@@ -492,8 +491,8 @@ const BackupTab: React.FC<Props> = ({ game = '' }) => {
             </h3>
             
             <div className="flex-1 overflow-y-auto custom-scrollbar pr-3 space-y-3 pb-4">
-              {regularBackups.length > 0 ? regularBackups.map((entry, i) => (
-                <BackupCard key={entry.name} entry={entry} index={i} isPinned={false} />
+              {regularBackups.length > 0 ? regularBackups.map((entry) => (
+                <BackupCard key={entry.name} entry={entry} isPinned={false} />
               )) : (
                 <div className="p-10 text-center border border-dashed border-white/5 rounded-lg">
                   <p className="text-gray-600 text-sm italic">No archives found.</p>

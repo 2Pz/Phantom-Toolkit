@@ -1,4 +1,4 @@
-import { Build, GameType, Item, PlayerData, StatusState, SlotType, BackendItem, AppConfig, BackupSettings, BackupEntry } from './types';
+import { GameType, Item, PlayerData, StatusState, SlotType, BackendItem, AppConfig, BackupSettings, BackupEntry } from './types';
 
 function getTypeForCsv(csv: string): SlotType {
     const lookup: Record<string, SlotType> = {
