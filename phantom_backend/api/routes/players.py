@@ -170,6 +170,9 @@ def write_build(game: str, player_num: int, req: WriteBuildRequest):
             svc.write_stats(player_num, combined)
 
         svc.write_build(player_num, req.equipment)
-        return {"ok": True}
+
+        # Return the updated player state so the UI stays in sync (showing Naked IDs, etc.)
+        p = svc.get_player(player_num)
+        return _enrich_player_data(p, game)
     finally:
         mem.close()

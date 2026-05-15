@@ -29,7 +29,7 @@ const InventorySlot: React.FC<InventorySlotProps> = ({
       onMouseLeave={onMouseLeave}
       className={`
         relative soulslike-slot cursor-pointer flex items-center justify-center transition-all duration-200
-        ${className || 'w-20 h-20 md:w-24 md:h-24'}
+        ${className || 'w-16 h-16 md:w-20 md:h-20'}
         ${isActive ? 'active z-10 scale-105' : 'hover:scale-102'}
       `}
     >

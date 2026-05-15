@@ -1,4 +1,4 @@
-import { Build, GameType, Item, PlayerData, StatusState, SlotType, BackendItem, AppConfig, BackupSettings, BackupEntry } from './types';
+import { GameType, Item, PlayerData, StatusState, SlotType, BackendItem, AppConfig, BackupSettings, BackupEntry } from './types';
 
 function getTypeForCsv(csv: string): SlotType {
     const lookup: Record<string, SlotType> = {
@@ -288,165 +288,145 @@ export async function getPlayers(game: GameType): Promise<PlayerData[]> {
         const gameKey = toBackendGame(game);
         const res = await fetch(`${API_BASE}/${gameKey}/players`);
         const data = await res.json();
-
-        return (data as BackendPlayer[]).map((p) => {
-            // Transform backend response to match frontend PlayerData structure
-            const stats = p.stats || {};
-            const attributes = {
-                Vigor: stats.vigor || 0,
-                Mind: stats.mind || 0,
-                Attunement: stats.attunement || 0,
-                Endurance: stats.endurance || 0,
-                Vitality: stats.vitality || 0,
-                Strength: stats.strength || 0,
-                Dexterity: stats.dexterity || 0,
-                Intelligence: stats.intelligence || 0,
-                Faith: stats.faith || 0,
-                Arcane: stats.arcane || 0,
-                Luck: stats.luck || 0,
-            };
-
-            const status: StatusState = {
-                level: stats.level || 0,
-                secondary: stats.runes || stats.souls || 0,
-                journey: 1,
-                covenant: p.equipment?.covenant?.name || '-',
-                attributes: attributes,
-                scadutreeBlessing: stats.scadutree_blessing,
-                reveredSpiritAsh: stats.revered_spirit_ash_blessing,
-                hp: stats.hp,
-                maxHp: stats.max_hp,
-                steamId: stats.steamId
-            };
-
-            const slots: Record<string, Item | null> = {};
-            if (p.equipment) {
-                const equipment = p.equipment as Record<string, BackendItem>;
-                // Helper to map backend slot to frontend slot
-                const mapSlot = (beKey: string, feKey: string) => {
-                    const itemData = equipment[beKey];
-                    // Filter out invalid items and Unarmed (treat as empty). Keep "Unknown" items so
-                    // builds can round-trip without unintentionally clearing real equipped items.
-                    if (itemData && itemData.id > 0) {
-                        const nameLower = itemData.name.toLowerCase();
-                        if (nameLower.includes('unarmed')) {
-                            return;
-                        }
-
-                        let upgrade: number | undefined = undefined;
-                        if (feKey.includes('weapon')) {
-                            const idNum = itemData.id;
-                            if (!isNaN(idNum) && idNum > 0) {
-                                // Simple heuristic for upgrade level: last 2 digits
-                                // Works for most ER and DS3 weapons (0-25 or 0-10)
-                                const rawUpgrade = idNum % 100;
-                                if (rawUpgrade > 0 && rawUpgrade <= 25) {
-                                    upgrade = rawUpgrade;
-                                }
-                            }
-                        }
-
-                        const displayName = upgrade ? `${itemData.name} +${upgrade}` : itemData.name;
-                        const itemType = getTypeForBackendKey(beKey);
-                        const showImage = itemData.icon_id && Number(itemData.icon_id) !== 0 && !itemData.name.toLowerCase().includes('unarmed') && !itemData.name.toLowerCase().includes('unknown');
-
-                        slots[feKey] = {
-                            id: itemData.id.toString(),
-                            name: displayName,
-                            image: showImage ? `${API_BASE}/${gameKey}/icons/${itemData.icon_id}` : '',
-                            type: itemType,
-                            description: '',
-                            weight: 0,
-                            upgrade,
-                            maxUpgrade: itemData.max_upgrade,
-                            gemId: itemData.gem_id,
-                            count: itemData.count
-                        };
-                    }
-                };
-
-                mapSlot("primary_right_wep", "weapon_r_1");
-                mapSlot("secondary_right_wep", "weapon_r_2");
-                mapSlot("tertiary_right_wep", "weapon_r_3");
-                mapSlot("primary_left_wep", "weapon_l_1");
-                mapSlot("secondary_left_wep", "weapon_l_2");
-                mapSlot("tertiary_left_wep", "weapon_l_3");
-                mapSlot("helmet", "head");
-                mapSlot("armor", "chest");
-                mapSlot("gauntlet", "hands");
-                mapSlot("leggings", "legs");
-
-                // DS3 Rings / ER Talismans
-                if (game === 'DARK_SOULS_3') {
-                    mapSlot("ring_1", "ring_1");
-                    mapSlot("ring_2", "ring_2");
-                    mapSlot("ring_3", "ring_3");
-                    mapSlot("ring_4", "ring_4");
-                    mapSlot("covenant", "covenant");
-                } else {
-                    mapSlot("accessory_1", "talisman_1");
-                    mapSlot("accessory_2", "talisman_2");
-                    mapSlot("accessory_3", "talisman_3");
-                    mapSlot("accessory_4", "talisman_4");
-                    // Physick Tears
-                    mapSlot("physick_tear_1", "physick_tear_1");
-                    mapSlot("physick_tear_2", "physick_tear_2");
-                }
-
-                // Quick Items
-                for (let i = 1; i <= 10; i++) {
-                    const fePrefix = i <= 5 ? 'quick_1' : 'quick_2';
-                    mapSlot(`quick_item_${i}`, `${fePrefix}_${i}`);
-                }
-
-                // Spells
-                for (let i = 0; i < 14; i++) {
-                    mapSlot(`magic_slot_${i}`, `spell_${i + 1}`);
-                }
-
-                // Ammo
-                if (game === 'ELDEN_RING') {
-                    // ER: primary/secondary arrow -> ammo_1_1 / ammo_1_2 implies arrow slots?
-                    // Frontend EquipmentGrid for ER:
-                    //   {[1, 2].map(i => renderSlot(`ammo_1_${i}`, SlotType.AMMO_ARROW))}
-                    //   {[1, 2].map(i => renderSlot(`ammo_2_${i}`, SlotType.AMMO_ARROW))}
-                    // Assuming ammo_1 is Arrows, ammo_2 is Bolts based on typical UI?
-                    // But backend just has primary/secondary arrow/bolt.
-                    // Let's assume ammo_1_x are arrows, ammo_2_x are bolts.
-                    mapSlot("primary_arrow", "ammo_1_1");
-                    mapSlot("secondary_arrow", "ammo_1_2");
-                    mapSlot("primary_bolt", "ammo_2_1");
-                    mapSlot("secondary_bolt", "ammo_2_2");
-                } else {
-                    // DS3: arrow_1, arrow_2, bolt_1, bolt_2
-                    // Frontend: ammo_arrow_1, ammo_arrow_2, ammo_bolt_1, ammo_bolt_2
-                    mapSlot("primary_arrow", "ammo_arrow_1");
-                    mapSlot("secondary_arrow", "ammo_arrow_2");
-                    mapSlot("primary_bolt", "ammo_bolt_1");
-                    mapSlot("secondary_bolt", "ammo_bolt_2");
-                }
-
-                // DS3 Covenant handled above if present, also handled here if mapSlot called twice is fine (it overwrites)
-            }
-
-            const build: Build = {
-                id: `player-${p.player_num}`,
-                name: p.name,
-                slots: slots
-            };
-
-            return {
-                name: p.name,
-                status,
-                build,
-                isLocal: p.player_num === 0,
-                date: new Date().toISOString()
-            };
-        });
+        return (data as BackendPlayer[]).map((p) => transformBackendPlayer(game, p));
     } catch (e) {
-        console.error('Failed to list players', e);
+        console.error('Failed to get players', e);
         return [];
     }
+}
+
+export function transformBackendPlayer(game: GameType, p: BackendPlayer): PlayerData {
+    const gameKey = toBackendGame(game);
+    // Transform backend response to match frontend PlayerData structure
+    const stats = p.stats || {};
+    const attributes = {
+        Vigor: stats.vigor || 0,
+        Mind: stats.mind || 0,
+        Attunement: stats.attunement || 0,
+        Endurance: stats.endurance || 0,
+        Vitality: stats.vitality || 0,
+        Strength: stats.strength || 0,
+        Dexterity: stats.dexterity || 0,
+        Intelligence: stats.intelligence || 0,
+        Faith: stats.faith || 0,
+        Arcane: stats.arcane || 0,
+        Luck: stats.luck || 0,
+    };
+
+    const status: StatusState = {
+        level: stats.level || 0,
+        secondary: stats.runes || stats.souls || 0,
+        journey: 1,
+        covenant: p.equipment?.covenant?.name || '-',
+        attributes: attributes,
+        scadutreeBlessing: stats.scadutree_blessing,
+        reveredSpiritAsh: stats.revered_spirit_ash_blessing,
+        hp: stats.hp,
+        maxHp: stats.max_hp,
+        steamId: stats.steamId
+    };
+
+    const slots: Record<string, Item | null> = {};
+    if (p.equipment) {
+        const equipment = p.equipment as Record<string, BackendItem>;
+        // Helper to map backend slot to frontend slot
+        const mapSlot = (beKey: string, feKey: string) => {
+            const itemData = equipment[beKey];
+            if (itemData && itemData.id > 0) {
+                const nameLower = itemData.name.toLowerCase();
+                if (nameLower.includes('unarmed')) {
+                    return;
+                }
+
+                let upgrade: number | undefined = undefined;
+                if (feKey.includes('weapon')) {
+                    const idNum = itemData.id;
+                    if (!isNaN(idNum) && idNum > 0) {
+                        const rawUpgrade = idNum % 100;
+                        if (rawUpgrade > 0 && rawUpgrade <= 25) {
+                            upgrade = rawUpgrade;
+                        }
+                    }
+                }
+
+                const displayName = upgrade ? `${itemData.name} +${upgrade}` : itemData.name;
+                const itemType = getTypeForBackendKey(beKey);
+                const showImage = itemData.icon_id && Number(itemData.icon_id) !== 0 && !itemData.name.toLowerCase().includes('unarmed') && !itemData.name.toLowerCase().includes('unknown');
+
+                slots[feKey] = {
+                    id: itemData.id.toString(),
+                    name: displayName,
+                    image: showImage ? `${API_BASE}/${gameKey}/icons/${itemData.icon_id}` : '',
+                    type: itemType,
+                    description: '',
+                    weight: 0,
+                    upgrade,
+                    maxUpgrade: itemData.max_upgrade,
+                    gemId: itemData.gem_id,
+                    count: itemData.count
+                };
+            }
+        };
+
+        mapSlot("primary_right_wep", "weapon_r_1");
+        mapSlot("secondary_right_wep", "weapon_r_2");
+        mapSlot("tertiary_right_wep", "weapon_r_3");
+        mapSlot("primary_left_wep", "weapon_l_1");
+        mapSlot("secondary_left_wep", "weapon_l_2");
+        mapSlot("tertiary_left_wep", "weapon_l_3");
+        mapSlot("helmet", "head");
+        mapSlot("armor", "chest");
+        mapSlot("gauntlet", "hands");
+        mapSlot("leggings", "legs");
+
+        if (game === 'DARK_SOULS_3') {
+            mapSlot("ring_1", "ring_1");
+            mapSlot("ring_2", "ring_2");
+            mapSlot("ring_3", "ring_3");
+            mapSlot("ring_4", "ring_4");
+            mapSlot("covenant", "covenant");
+        } else {
+            mapSlot("accessory_1", "talisman_1");
+            mapSlot("accessory_2", "talisman_2");
+            mapSlot("accessory_3", "talisman_3");
+            mapSlot("accessory_4", "talisman_4");
+            mapSlot("physick_tear_1", "physick_tear_1");
+            mapSlot("physick_tear_2", "physick_tear_2");
+        }
+
+        for (let i = 1; i <= 10; i++) {
+            const fePrefix = i <= 5 ? 'quick_1' : 'quick_2';
+            mapSlot(`quick_item_${i}`, `${fePrefix}_${i}`);
+        }
+
+        for (let i = 0; i < 14; i++) {
+            mapSlot(`magic_slot_${i}`, `spell_${i + 1}`);
+        }
+
+        if (game === 'ELDEN_RING') {
+            mapSlot("primary_arrow", "ammo_1_1");
+            mapSlot("secondary_arrow", "ammo_1_2");
+            mapSlot("primary_bolt", "ammo_2_1");
+            mapSlot("secondary_bolt", "ammo_2_2");
+        } else {
+            mapSlot("primary_arrow", "ammo_arrow_1");
+            mapSlot("secondary_arrow", "ammo_arrow_2");
+            mapSlot("primary_bolt", "ammo_bolt_1");
+            mapSlot("secondary_bolt", "ammo_bolt_2");
+        }
+    }
+
+    return {
+        name: p.name,
+        status,
+        build: {
+            id: `player-${p.player_num}`,
+            name: p.name,
+            slots: slots
+        },
+        isLocal: p.player_num === 0,
+        date: new Date().toISOString()
+    };
 }
 
 export async function getRecentPlayers(game: GameType): Promise<PlayerData[]> {
@@ -456,197 +436,20 @@ export async function getRecentPlayers(game: GameType): Promise<PlayerData[]> {
         if (!res.ok) return [];
         const data = await res.json();
 
-        return (data as BackendPlayer[]).map((p) => {
-            // Transform backend response to match frontend PlayerData structure
-            const stats = p.stats || {};
-            const attributes = {
-                Vigor: stats.vigor || 0,
-                Mind: stats.mind || 0,
-                Attunement: stats.attunement || 0,
-                Endurance: stats.endurance || 0,
-                Vitality: stats.vitality || 0,
-                Strength: stats.strength || 0,
-                Dexterity: stats.dexterity || 0,
-                Intelligence: stats.intelligence || 0,
-                Faith: stats.faith || 0,
-                Arcane: stats.arcane || 0,
-                Luck: stats.luck || 0,
-            };
-
-            const status: StatusState = {
-                level: stats.level || 0,
-                secondary: stats.runes || stats.souls || 0,
-                journey: 1,
-                covenant: p.equipment?.covenant?.name || '-',
-                attributes: attributes,
-                scadutreeBlessing: stats.scadutree_blessing,
-                reveredSpiritAsh: stats.revered_spirit_ash_blessing,
-                hp: stats.hp,
-                maxHp: stats.max_hp,
-                steamId: stats.steamId
-            };
-
-            const slots: Record<string, Item | null> = {};
-            if (p.equipment) {
-                const equipment = p.equipment as Record<string, BackendItem>;
-                const mapSlot = (beKey: string, feKey: string) => {
-                    const itemData = equipment[beKey];
-                    if (itemData && itemData.id > 0) {
-                        const nameLower = itemData.name.toLowerCase();
-                        if (nameLower.includes('unarmed')) {
-                            return;
-                        }
-
-                        let upgrade: number | undefined = undefined;
-                        if (feKey.includes('weapon')) {
-                            const idNum = itemData.id;
-                            if (!isNaN(idNum) && idNum > 0) {
-                                const rawUpgrade = idNum % 100;
-                                if (rawUpgrade > 0 && rawUpgrade <= 25) {
-                                    upgrade = rawUpgrade;
-                                }
-                            }
-                        }
-
-                        const displayName = upgrade ? `${itemData.name} +${upgrade}` : itemData.name;
-                        const itemType = getTypeForBackendKey(beKey);
-                        const showImage = itemData.icon_id && Number(itemData.icon_id) !== 0 && !itemData.name.toLowerCase().includes('unarmed') && !itemData.name.toLowerCase().includes('unknown');
-
-                        slots[feKey] = {
-                            id: itemData.id.toString(),
-                            name: displayName,
-                            image: showImage ? `${API_BASE}/${gameKey}/icons/${itemData.icon_id}` : '',
-                            type: itemType,
-                            description: '',
-                            weight: 0,
-                            upgrade,
-                            maxUpgrade: itemData.max_upgrade,
-                            gemId: itemData.gem_id,
-                            count: itemData.count
-                        };
-                    }
-                };
-
-                mapSlot("primary_right_wep", "weapon_r_1");
-                mapSlot("secondary_right_wep", "weapon_r_2");
-                mapSlot("tertiary_right_wep", "weapon_r_3");
-                mapSlot("primary_left_wep", "weapon_l_1");
-                mapSlot("secondary_left_wep", "weapon_l_2");
-                mapSlot("tertiary_left_wep", "weapon_l_3");
-                mapSlot("helmet", "head");
-                mapSlot("armor", "chest");
-                mapSlot("gauntlet", "hands");
-                mapSlot("leggings", "legs");
-
-                if (game === 'DARK_SOULS_3') {
-                    mapSlot("ring_1", "ring_1");
-                    mapSlot("ring_2", "ring_2");
-                    mapSlot("ring_3", "ring_3");
-                    mapSlot("ring_4", "ring_4");
-                    mapSlot("covenant", "covenant");
-                } else {
-                    mapSlot("accessory_1", "talisman_1");
-                    mapSlot("accessory_2", "talisman_2");
-                    mapSlot("accessory_3", "talisman_3");
-                    mapSlot("accessory_4", "talisman_4");
-                    mapSlot("physick_tear_1", "physick_tear_1");
-                    mapSlot("physick_tear_2", "physick_tear_2");
-                }
-
-                for (let i = 1; i <= 10; i++) {
-                    const fePrefix = i <= 5 ? 'quick_1' : 'quick_2';
-                    mapSlot(`quick_item_${i}`, `${fePrefix}_${i}`);
-                }
-
-                for (let i = 0; i < 14; i++) {
-                    mapSlot(`magic_slot_${i}`, `spell_${i + 1}`);
-                }
-
-                if (game === 'ELDEN_RING') {
-                    mapSlot("primary_arrow", "ammo_1_1");
-                    mapSlot("secondary_arrow", "ammo_1_2");
-                    mapSlot("primary_bolt", "ammo_2_1");
-                    mapSlot("secondary_bolt", "ammo_2_2");
-                } else {
-                    mapSlot("primary_arrow", "ammo_arrow_1");
-                    mapSlot("secondary_arrow", "ammo_arrow_2");
-                    mapSlot("primary_bolt", "ammo_bolt_1");
-                    mapSlot("secondary_bolt", "ammo_bolt_2");
-                }
-            }
-
-            const build: Build = {
-                id: `recent-player-${p.player_num}-${p.name}`,
-                name: p.name,
-                slots: slots
-            };
-
-            return {
-                name: p.name,
-                status,
-                build,
-                isLocal: false,
-                date: p.last_seen || new Date().toISOString()
-            };
-        });
+        return (data as BackendPlayer[]).map((p) => transformBackendPlayer(game, p));
     } catch (e) {
         console.error('Failed to list recent players', e);
         return [];
     }
 }
 
-
 export async function getPlayer(game: GameType, playerNum: number): Promise<PlayerData | null> {
-    // Legacy support or specific single update if needed, effectively duplicate of mapping logic above
-    // keeping simplified for now or could just reuse list logic if backend supports it efficiently
     try {
         const gameKey = toBackendGame(game);
         const res = await fetch(`${API_BASE}/${gameKey}/players/${playerNum}`);
         if (!res.ok) return null;
         const data = await res.json();
-
-        const stats = data.stats || {};
-        const attributes = {
-            Vigor: stats.vigor || 0,
-            Mind: stats.mind || 0,
-            Attunement: stats.attunement || 0,
-            Endurance: stats.endurance || 0,
-            Vitality: stats.vitality || 0,
-            Strength: stats.strength || 0,
-            Dexterity: stats.dexterity || 0,
-            Intelligence: stats.intelligence || 0,
-            Faith: stats.faith || 0,
-            Arcane: stats.arcane || 0,
-            Luck: stats.luck || 0,
-        };
-
-        const status: StatusState = {
-            level: stats.level || 0,
-            secondary: stats.runes || stats.souls || 0,
-            journey: 1,
-            covenant: data.equipment?.covenant ? 'Equipped' : '-',
-            attributes: attributes,
-            scadutreeBlessing: stats.scadutree_blessing,
-            reveredSpiritAsh: stats.revered_spirit_ash_blessing,
-            hp: stats.hp,
-            maxHp: stats.max_hp,
-            steamId: stats.steamId
-        };
-
-        const build: Build = {
-            id: `player-${playerNum}`,
-            name: data.name,
-            slots: {}
-        };
-
-        return {
-            name: data.name,
-            status,
-            build,
-            isLocal: playerNum === 0,
-            date: new Date().toISOString()
-        };
-
+        return transformBackendPlayer(game, data as BackendPlayer);
     } catch (e) {
         console.error(`Failed to get player ${playerNum}`, e);
         return null;
@@ -725,7 +528,7 @@ export async function deleteBuild(name: string): Promise<boolean> {
     }
 }
 
-export async function writeBuild(game: GameType, playerNum: number, slots: Record<string, Item | null>, status?: StatusState) {
+export async function writeBuild(game: GameType, playerNum: number, slots: Record<string, Item | null>, status?: StatusState): Promise<PlayerData> {
     const gameKey = toBackendGame(game);
     const equipment: Record<string, BuildEquipmentEntry> = {};
     const slotMapping = buildFrontendToBackendSlotMapping(game);
@@ -826,6 +629,9 @@ export async function writeBuild(game: GameType, playerNum: number, slots: Recor
         console.error("Build Application Failed", err);
         throw new Error(`Server returned ${res.status}: ${JSON.stringify(err)}`);
     }
+
+    const data = await res.json();
+    return transformBackendPlayer(game, data as BackendPlayer);
 }
 
 export async function inspectBuild(game: GameType, equipment: Record<string, unknown>): Promise<Record<string, BackendItem | null>> {

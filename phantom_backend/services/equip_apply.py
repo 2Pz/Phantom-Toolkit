@@ -578,8 +578,10 @@ class EquipApplyService:
                         self._mem.write_u32(equip_game_data + offset, 0xFFFFFFFF)
                         return True
 
-                    if slot == 12:
-                        item_id = 1000
+                    if 0 <= slot <= 5:
+                        item_id = 110000
+                    elif slot == 12:
+                        item_id = 10000
                     elif slot == 13:
                         item_id = 10100
                     elif slot == 14:

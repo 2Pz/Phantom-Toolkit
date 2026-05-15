@@ -77,6 +77,7 @@ export interface BackupEntry {
   id: string;
   name: string;
   date: string;
+  sourceFiles?: string;
   size: number;
   isPinned?: boolean;
   hasScreenshot?: boolean;
