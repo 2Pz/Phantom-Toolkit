@@ -308,8 +308,26 @@ class PlayerService:
 
         for k, off in int_fields.items():
             if k in stats_lower and isinstance(stats_lower[k], (int, float)):
+                val = int(stats_lower[k])
+                # Defensive clamping: level and attributes should be >= 1, others >= 0
+                if k in (
+                    "vigor",
+                    "mind",
+                    "endurance",
+                    "strength",
+                    "dexterity",
+                    "intelligence",
+                    "faith",
+                    "arcane",
+                ):
+                    val = min(99, max(1, val))
+                elif k == "level":
+                    val = max(1, val)
+                else:
+                    val = max(0, val)
+
                 # Runes/Health can be large, use u32 to avoid overflow if they exceed 2.1B
-                self._mem.write_u32(base_addr + off, int(stats_lower[k]) & 0xFFFFFFFF)
+                self._mem.write_u32(base_addr + off, val & 0xFFFFFFFF)
 
         # Blessings (Shadow of the Erdtree)
         sote = (
@@ -319,11 +337,11 @@ class PlayerService:
         )
         if sote:
             if "scadutree_blessing" in sote:
-                self._mem.write_u8(base_addr + 0xFC, int(sote["scadutree_blessing"]))
+                val = max(0, int(sote["scadutree_blessing"]))
+                self._mem.write_u8(base_addr + 0xFC, val)
             if "revered_spirit_ash_blessing" in sote:
-                self._mem.write_u8(
-                    base_addr + 0xFD, int(sote["revered_spirit_ash_blessing"])
-                )
+                val = max(0, int(sote["revered_spirit_ash_blessing"]))
+                self._mem.write_u8(base_addr + 0xFD, val)
 
     def _write_stats_ds3(self, player_num: int, stats: dict[str, Any]) -> None:
         base_addr = self._ds3_base_addr(player_num)
@@ -349,8 +367,27 @@ class PlayerService:
 
         for k, off in int_fields.items():
             if k in stats_lower and isinstance(stats_lower[k], (int, float)):
+                val = int(stats_lower[k])
+                # Defensive clamping: level and attributes should be >= 1, others >= 0
+                if k in (
+                    "vigor",
+                    "attunement",
+                    "endurance",
+                    "vitality",
+                    "strength",
+                    "dexterity",
+                    "intelligence",
+                    "faith",
+                    "luck",
+                ):
+                    val = min(99, max(1, val))
+                elif k == "level":
+                    val = max(1, val)
+                else:
+                    val = max(0, val)
+
                 # Souls/Health can be large, use u32 to avoid overflow if they exceed 2.1B
-                self._mem.write_u32(base_addr + off, int(stats_lower[k]) & 0xFFFFFFFF)
+                self._mem.write_u32(base_addr + off, val & 0xFFFFFFFF)
 
     def _write_build_eldenring(
         self, player_num: int, equipment: dict[str, Any]
