@@ -101,7 +101,7 @@ const StatusPanel: React.FC<StatusPanelProps> = ({ playerName, status, game, onS
               type="number"
               value={playerName ? (status.level ?? '') : ''}
               onChange={(e) => onStatusChange('level', parseInt(e.target.value) || 0)}
-              className={`${inputClasses} ${autoCalcLevel ? 'text-[#bfa571] shadow-[0_0_10px_rgba(191,165,113,0.1)]' : ''}`}
+              className={inputClasses}
               readOnly={isReadOnly || autoCalcLevel}
             />
           </div>
@@ -624,7 +624,17 @@ const App: React.FC = () => {
 
   const handleStatusChange = (path: string, value: string | number | boolean) => {
     if (!isLocalView) return;
-    const newStatus = { ...localStatus, [path]: value };
+    
+    let finalValue = value;
+    if (typeof value === 'number') {
+      if (path === 'level' || path === 'journey') {
+        finalValue = Math.max(1, value);
+      } else {
+        finalValue = Math.max(0, value);
+      }
+    }
+
+    const newStatus = { ...localStatus, [path]: finalValue };
     setLocalStatus(newStatus);
     // Fire and forget write (debounce would be better for prod but this is local)
     writeStats(selectedGame, 0, newStatus);
@@ -632,14 +642,15 @@ const App: React.FC = () => {
 
   const handleAttributeChange = (name: string, value: number) => {
     if (!isLocalView) return;
-    const newAttributes = { ...localStatus.attributes, [name]: value };
+    const finalAttrValue = Math.min(99, Math.max(1, value));
+    const newAttributes = { ...localStatus.attributes, [name]: finalAttrValue };
 
     let newLevel = localStatus.level;
     if (autoCalcLevel) {
       const attributeNames = selectedGame === 'ELDEN_RING' ? ER_ATTRIBUTES : DS3_ATTRIBUTES;
       const sum = attributeNames.reduce((acc, attr) => acc + (newAttributes[attr] || 0), 0);
       const offset = selectedGame === 'ELDEN_RING' ? 79 : 89;
-      newLevel = sum - offset;
+      newLevel = Math.max(1, sum - offset);
     }
 
     const newStatus = {
@@ -660,7 +671,7 @@ const App: React.FC = () => {
       const attributeNames = selectedGame === 'ELDEN_RING' ? ER_ATTRIBUTES : DS3_ATTRIBUTES;
       const sum = attributeNames.reduce((acc, attr) => acc + (localStatus.attributes[attr] || 0), 0);
       const offset = selectedGame === 'ELDEN_RING' ? 79 : 89;
-      const newLevel = sum - offset;
+      const newLevel = Math.max(1, sum - offset);
 
       const newStatus = {
         ...localStatus,
