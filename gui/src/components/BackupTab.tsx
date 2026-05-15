@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { BackupEntry, BackupSettings } from '../types';
 import {
   getBackupSettings, saveBackupSettings, autoFindSavePaths,
@@ -108,6 +108,11 @@ const BackupTab: React.FC<Props> = ({ game = '' }) => {
   // Screenshot preview
   const [screenshotUrl, setScreenshotUrl] = useState<string | null>(null);
 
+  const selectedEntry = useMemo(() => {
+    if (!selectedBackup) return null;
+    return [...pinnedBackups, ...regularBackups].find(b => b.name === selectedBackup) || null;
+  }, [selectedBackup, pinnedBackups, regularBackups]);
+
   // Auto-backup
   const [autoRunning, setAutoRunning] = useState(false);
   const lastNewestRef = useRef<string | null>(null);
@@ -206,15 +211,13 @@ const BackupTab: React.FC<Props> = ({ game = '' }) => {
   }, [game, refreshBackups, checkAutoStatus]);
 
   useEffect(() => {
-    if (!selectedBackup) { setScreenshotUrl(null); return; }
-    const all = [...pinnedBackups, ...regularBackups];
-    const entry = all.find(b => b.name === selectedBackup);
-    if (entry?.hasScreenshot) {
-      setScreenshotUrl(getScreenshotUrl(entry.name, game));
+    if (!selectedEntry) { setScreenshotUrl(null); return; }
+    if (selectedEntry.hasScreenshot) {
+      setScreenshotUrl(getScreenshotUrl(selectedEntry.name, game));
     } else {
       setScreenshotUrl(null);
     }
-  }, [selectedBackup, pinnedBackups, regularBackups, game]);
+  }, [selectedEntry, game]);
 
   // Sync active selection to backend for global hotkeys
   useEffect(() => {
@@ -413,6 +416,9 @@ const BackupTab: React.FC<Props> = ({ game = '' }) => {
                   {entry.name.replace('.zip', '')}
                 </h4>
                 <span className="text-[8px] text-gray-500 uppercase tracking-widest block">{entry.date}</span>
+                {entry.sourceFiles && (
+                  <span className="text-[7px] text-[#bfa571]/50 uppercase tracking-widest block truncate mt-0.5">{entry.sourceFiles}</span>
+                )}
               </div>
               <button 
                 onClick={(e) => { e.stopPropagation(); handlePin(entry.name, !isPinned); }}
@@ -712,13 +718,18 @@ const BackupTab: React.FC<Props> = ({ game = '' }) => {
                   </div>
                 )}
                 <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-                <div className="absolute bottom-6 left-6 opacity-0 group-hover:opacity-100 transition-all translate-y-4 group-hover:translate-y-0">
+                <div className="absolute bottom-6 left-6 opacity-0 group-hover:opacity-100 transition-all translate-y-4 group-hover:translate-y-0 flex flex-col items-start gap-1">
                    <h3 className="text-2xl fantasy-font text-[#bfa571] tracking-widest uppercase mb-1 drop-shadow-lg">
                      {selectedBackup.replace('.zip', '')}
                    </h3>
-                   <p className="text-sm text-gray-300 tracking-[0.1em]">
-                     {[...pinnedBackups, ...regularBackups].find(b => b.name === selectedBackup)?.date || ''}
+                   <p className="text-sm text-gray-300 tracking-[0.1em] uppercase">
+                     {selectedEntry?.date || ''}
                    </p>
+                   {selectedEntry?.sourceFiles && (
+                     <div className="text-[10px] text-[#bfa571]/70 tracking-[0.1em] uppercase mt-1">
+                       {selectedEntry.sourceFiles}
+                     </div>
+                   )}
                 </div>
               </div>
 

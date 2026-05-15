@@ -648,6 +648,7 @@ def list_backups(
                     "size": stat.st_size,
                     "isPinned": fname in pinned_names,
                     "hasScreenshot": _zip_has_screenshot(fpath),
+                    "sourceFiles": _get_zip_save_files(fpath),
                 }
             )
         except Exception:
@@ -673,6 +674,20 @@ def _zip_has_screenshot(zip_path: str) -> bool:
             return "screenshot.png" in zf.namelist()
     except Exception:
         return False
+
+
+def _get_zip_save_files(zip_path: str) -> str:
+    """Return a comma-separated list of save files inside the zip."""
+    try:
+        with zipfile.ZipFile(zip_path, "r") as zf:
+            files = [
+                f
+                for f in zf.namelist()
+                if f != "screenshot.png" and not f.endswith("/")
+            ]
+            return ", ".join(files)
+    except Exception:
+        return ""
 
 
 def create_backup(
@@ -756,17 +771,6 @@ def load_backup(
     if settings is None:
         settings = load_settings(game_key)
 
-    # Handle "Safe Load" (Quit to Menu)
-    if settings.get("quit_to_menu_before_load", False) and game_key:
-        st = _check_game_status(game_key)
-        if st["attached"] and st["loaded"]:
-            try:
-                _do_quit_to_menu(game_key)
-                # Wait for the menu to load
-                time.sleep(1)
-            except Exception:
-                pass
-
     save_dir_ui = settings.get("save_directory", "")
     backup_dir_ui = settings.get("backup_directory", "")
     save_dir = _access_path(save_dir_ui)
@@ -821,24 +825,6 @@ def load_backup(
 
     _play_notification("load", game_key=game_key)
     return {"restored": name, "files": restored}
-
-
-def _do_quit_to_menu(game_key: str) -> None:
-    """Call quit_to_menu to return the game to the main menu."""
-    if not game_key:
-        return
-    with contextlib.suppress(Exception):
-        from phantom_backend.games.registry import GameRegistry
-        from phantom_backend.services.actions import ActionsService
-
-        reg = GameRegistry()
-        adapter = reg.get(game_key)
-        mem = adapter.make_memory()
-        try:
-            resolver = adapter.make_resolver(mem)
-            ActionsService(mem=mem, resolver=resolver, game_key=game_key).quit_to_menu()
-        finally:
-            mem.close()
 
 
 def delete_backup(
