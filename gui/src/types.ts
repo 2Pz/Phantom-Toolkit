@@ -29,6 +29,7 @@ export interface Item {
   upgrade?: number;
   maxUpgrade?: number;
   gemId?: number;
+  category?: string;
   baseId?: string;
   baseName?: string;
   variants?: { id: number; name: string }[];
@@ -39,6 +40,7 @@ export interface BackendItem {
   name: string;
   icon_id: string | null;
   max_upgrade: number;
+  category?: string;
   gem_id?: number;
   count?: number;
   base_id?: number;

@@ -77,6 +77,14 @@ def get_item(game: str, csv: str, id: int, lang: str | None = None):
     return {"item": item.__dict__}
 
 
+@router.get("/items/enrich-weapon")
+def enrich_weapon(game: str, id: int, lang: str | None = None):
+    """Given any weapon variant ID, return the grouped entry with all variants/baseId/baseName."""
+    svc = ItemAssetService(game_key=game)
+    item = svc.enrich_weapon(id, lang)
+    return {"item": item}
+
+
 @router.get("/icons/{icon_id}")
 def get_icon(game: str, icon_id: str):
     svc = ItemAssetService(game_key=game)
@@ -143,6 +151,7 @@ def inspect_build(game: str, req: InspectBuildRequest):
                     "name": found.name,
                     "icon_id": found.icon_id,
                     "max_upgrade": found.max_upgrade,
+                    "category": found.category,
                 }
 
                 if ash_of_war_id > -1:

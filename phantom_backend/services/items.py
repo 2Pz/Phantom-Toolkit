@@ -262,6 +262,19 @@ class ItemAssetService:
         """Map stem -> full path inside zip for fast lookup."""
         return _get_zip_namelist(str(self.images_zip()))
 
+    def enrich_weapon(self, item_id: int, language: str | None = None) -> dict | None:
+        """Given any weapon variant ID, return the grouped entry with all variants/baseId/baseName."""
+        table = self._load_csv("EquipParamWeapon.csv", language)
+        base_id = item_id - (item_id % 10000)
+        matching = [
+            row for row in table.values() if row.id - (row.id % 10000) == base_id
+        ]
+        if not matching:
+            return None
+        items_dict = [row.__dict__ for row in matching]
+        grouped = group_weapon_variants(items_dict)
+        return grouped[0] if grouped else None
+
     def search_items(
         self,
         *,

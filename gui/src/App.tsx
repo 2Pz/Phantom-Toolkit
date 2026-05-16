@@ -1,12 +1,12 @@
 
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { Item } from './types';
 import type { Build, GameType, StatusState, PlayerData } from './types';
 import { getSlotInfo } from './constants';
 import EquipmentGrid from './components/EquipmentGrid';
 import { AlertModal } from './components/Modal';
 import BackupTab from './components/BackupTab';
-import { detectGame, getPlayers, getRecentPlayers, quitToMenu, fixInfiniteLoading, toggleFogWall, writeStats, toggleCheat as apiToggleCheat, searchItems, writeBuild, inspectBuild, mapBackendToFrontendSlots, convertBuildToSaveFormat, saveBuild, browseSaveFile, getConfig, getMetadata, openUrl, updateConfig, getSlotCategories } from './api';
+import { detectGame, getPlayers, getRecentPlayers, quitToMenu, fixInfiniteLoading, toggleFogWall, writeStats, toggleCheat as apiToggleCheat, searchItems, enrichWeapon, writeBuild, inspectBuild, mapBackendToFrontendSlots, convertBuildToSaveFormat, saveBuild, browseSaveFile, getConfig, getMetadata, openUrl, updateConfig, getSlotCategories } from './api';
 import type { AppMetadata } from './api';
 import WeaponConfig from './components/WeaponConfig';
 import { LanguageSelector } from './components/LanguageSelector';
@@ -531,6 +531,9 @@ const App: React.FC = () => {
   // Prevent multiple save-file dialogs from opening due to click races.
   const saveBuildPickingRef = React.useRef(false);
   const [saveBuildPicking, setSaveBuildPicking] = useState(false);
+  const enrichSlotRef = useRef<string | null>(null);
+  const searchResultsRef = useRef<HTMLDivElement | null>(null);
+  const shouldScrollToItemRef = useRef(false);
 
   // Search Effect
   useEffect(() => {
@@ -548,13 +551,15 @@ const App: React.FC = () => {
 
       setIsSearching(true);
       const query = searchQuery;
+      // When filtering by a specific category, fetch enough items to include the equipped one
+      const limit = selectedCategory ? 500 : 50;
       const results = await searchItems(
         selectedGame, query,
         slotInfo.csv,
         slotInfo.slotType,
         slotInfo.slotKey,
         selectedCategory || undefined,
-        50,
+        limit,
       );
       setSearchResults(results);
       setIsSearching(false);
@@ -579,7 +584,8 @@ const App: React.FC = () => {
     }
     getSlotCategories(selectedGame, slotInfo.slotKey).then(cats => {
       setAvailableCategories(cats);
-      setSelectedCategory('');
+      // Keep current category filter if still valid for this slot
+      setSelectedCategory(prev => (prev && !cats.includes(prev)) ? '' : prev);
     });
   }, [selectedSlot, selectedGame]);
 
@@ -863,6 +869,18 @@ const App: React.FC = () => {
 
   const configItem = pendingItem || currentSelectedItem;
 
+  // Scroll search results to the highlighted (equipped) item when a slot is selected
+  useEffect(() => {
+    if (!shouldScrollToItemRef.current) return;
+    if (!currentSelectedItem || !searchResultsRef.current) return;
+    const el = document.getElementById("search-result-" + currentSelectedItem.id)
+      || (currentSelectedItem.baseId && document.getElementById("search-result-" + currentSelectedItem.baseId));
+    if (el) {
+      el.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      shouldScrollToItemRef.current = false;
+    }
+  }, [searchResults, currentSelectedItem]);
+
   const handleClearSlot = useCallback((feKey: string) => {
     if (!isLocalView) return;
     setLocalBuild(prev => ({
@@ -873,6 +891,49 @@ const App: React.FC = () => {
       setLocalStatus(prev => ({ ...prev, covenant: '-' }));
     }
   }, [isLocalView]);
+
+  const handleSlotSelect = async (slotId: string) => {
+    enrichSlotRef.current = slotId;
+    shouldScrollToItemRef.current = true;
+    setSelectedSlot(slotId);
+    setPendingItem(null);
+    setSearchQuery('');
+
+    const slotItem = viewedBuild.slots[slotId];
+    // Show items in the same category so the equipped one appears in results
+    if (slotItem?.category) {
+      setSelectedCategory(slotItem.category);
+    }
+
+    if (slotItem && slotItem.maxUpgrade && slotItem.maxUpgrade > 0 && !slotItem.variants) {
+      const slotInfo = getSlotInfo(selectedGame, slotId);
+      if (!slotInfo) return;
+      try {
+        const enriched = await enrichWeapon(selectedGame, parseInt(slotItem.id));
+        if (enrichSlotRef.current !== slotId) return;
+        if (enriched) {
+          const merged: Item = {
+            ...enriched,
+            id: slotItem.id,
+            name: slotItem.name,
+            upgrade: slotItem.upgrade,
+            gemId: slotItem.gemId,
+            count: slotItem.count,
+          };
+          setLocalBuild(prev => ({
+            ...prev,
+            slots: { ...prev.slots, [slotId]: merged }
+          }));
+          if (enriched.category && enrichSlotRef.current === slotId) {
+            setSelectedCategory(enriched.category);
+          }
+          if (enrichSlotRef.current === slotId) {
+            setPendingItem(merged);
+          }
+        }
+      } catch { /* ignore stale/errored enrichments */ }
+    }
+  };
 
   const handleConfirmEquip = () => {
     if (!pendingItem || !selectedSlot) return;
@@ -938,7 +999,7 @@ const App: React.FC = () => {
 
         <nav className="flex gap-1 overflow-x-auto no-scrollbar">
           <button onClick={() => setActiveTab('main')} className={`px-4 py-2 transition-all fantasy-font uppercase tracking-widest text-xs border-b-2 whitespace-nowrap ${activeTab === 'main' ? 'text-[#bfa571] border-[#bfa571]' : 'text-gray-500 border-transparent hover:text-gray-300'}`}>Main</button>
-          <button onClick={() => setActiveTab('build')} className={`px-4 py-2 transition-all fantasy-font uppercase tracking-widest text-xs border-b-2 whitespace-nowrap ${activeTab === 'build' ? 'text-[#bfa571] border-[#bfa571]' : 'text-gray-500 border-transparent hover:text-gray-300'}`}>Creation</button>
+          <button onClick={() => { setViewedName(localName); setInspectedPlayer(null); setActiveTab('build'); }} className={`px-4 py-2 transition-all fantasy-font uppercase tracking-widest text-xs border-b-2 whitespace-nowrap ${activeTab === 'build' ? 'text-[#bfa571] border-[#bfa571]' : 'text-gray-500 border-transparent hover:text-gray-300'}`}>Creation</button>
           <button onClick={() => setActiveTab('toolkit')} className={`px-4 py-2 transition-all fantasy-font uppercase tracking-widest text-xs border-b-2 whitespace-nowrap ${activeTab === 'toolkit' ? 'text-[#bfa571] border-[#bfa571]' : 'text-gray-500 border-transparent hover:text-gray-300'}`}>Toolkit</button>
           <button onClick={() => setActiveTab('backup')} className={`px-4 py-2 transition-all fantasy-font uppercase tracking-widest text-xs border-b-2 whitespace-nowrap ${activeTab === 'backup' ? 'text-[#bfa571] border-[#bfa571]' : 'text-gray-500 border-transparent hover:text-gray-300'}`}>Backup</button>
         </nav>
@@ -1015,7 +1076,7 @@ const App: React.FC = () => {
                 selectedSlot={selectedSlot}
                 onHoverSlot={setHoveredSlot}
                 game={selectedGame}
-                onSelectSlot={(id) => { setSelectedSlot(id); setSearchQuery(''); setPendingItem(null); }}
+                onSelectSlot={handleSlotSelect}
               />
             </section >
 
@@ -1039,6 +1100,12 @@ const App: React.FC = () => {
                           <span className="text-[10px] text-gray-500 uppercase tracking-widest">ID</span>
                           <span className="text-xs text-[#bfa571] font-bold">{configItem.id || '--'}</span>
                         </div>
+                        {configItem.category && (
+                          <div className="flex justify-between items-center border-b border-white/5 pb-1">
+                            <span className="text-[10px] text-gray-500 uppercase tracking-widest">Category</span>
+                            <span className="text-xs text-[#bfa571] font-bold">{configItem.category}</span>
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -1157,7 +1224,7 @@ const App: React.FC = () => {
                 )}
               </div>
 
-              <div className="flex-1 overflow-y-auto p-3 custom-scrollbar">
+              <div ref={searchResultsRef} className="flex-1 overflow-y-auto p-3 custom-scrollbar">
                 {isSearching ? (
                   <div className="h-full flex flex-col items-center justify-center opacity-50">
                     <p className="text-xs fantasy-font uppercase tracking-widest">Searching...</p>
@@ -1165,10 +1232,11 @@ const App: React.FC = () => {
                 ) : (
                   <div className="grid grid-cols-5 gap-1.5">
                     {searchResults.map((item) => {
-                      const isSelectedInSlot = currentSelectedItem?.id === item.id;
+                      const isSelectedInSlot = currentSelectedItem?.id === item.id || currentSelectedItem?.baseId === item.id;
                       return (
                         <div
                           key={item.id}
+                          id={"search-result-" + item.id}
                           onClick={() => (isLocalView) && handleSelectItem(item)}
                           className={`aspect-square soulslike-slot flex items-center justify-center transition-all relative ${isSelectedInSlot ? 'item-glow active' : ''} ${(isLocalView) ? 'cursor-pointer hover:selected-highlight' : 'opacity-80 cursor-default'}`}
                           title={item.name}

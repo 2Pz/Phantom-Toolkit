@@ -42,6 +42,7 @@ def _enrich_player_data(p: PlayerService.PlayerState, game: str) -> PlayerDetail
                         "name": found.name,
                         "icon_id": found.icon_id,
                         "max_upgrade": found.max_upgrade,
+                        "category": found.category,
                     }
                 else:
                     enriched_eq[slot] = {

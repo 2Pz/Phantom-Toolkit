@@ -189,6 +189,7 @@ export async function searchItems(
             description: '',
             weight: 0,
             maxUpgrade: d.max_upgrade,
+            category: d.category,
             baseId: d.base_id?.toString(),
             baseName: d.base_name,
             variants: d.variants || undefined,
@@ -196,6 +197,33 @@ export async function searchItems(
     } catch (e) {
         console.error("Search error", e);
         return [];
+    }
+}
+
+export async function enrichWeapon(game: GameType, itemId: number): Promise<Item | null> {
+    try {
+        const gameKey = toBackendGame(game);
+        const res = await fetch(`${API_BASE}/${gameKey}/items/enrich-weapon?id=${itemId}&lang=en`);
+        if (!res.ok) return null;
+        const data = await res.json();
+        if (!data.item) return null;
+        const d = data.item as BackendItem;
+        return {
+            id: d.id.toString(),
+            name: d.name,
+            image: (d.icon_id && Number(d.icon_id) !== 0) ? `${API_BASE}/${gameKey}/icons/${d.icon_id}` : '',
+            type: SlotType.WEAPON_R,
+            description: '',
+            weight: 0,
+            maxUpgrade: d.max_upgrade,
+            category: d.category,
+            baseId: d.base_id?.toString(),
+            baseName: d.base_name,
+            variants: d.variants || undefined,
+        };
+    } catch (e) {
+        console.error("Failed to enrich weapon", e);
+        return null;
     }
 }
 
@@ -354,6 +382,7 @@ export function transformBackendPlayer(game: GameType, p: BackendPlayer): Player
                     weight: 0,
                     upgrade,
                     maxUpgrade: itemData.max_upgrade,
+                    category: itemData.category,
                     gemId: itemData.gem_id,
                     count: itemData.count
                 };
@@ -695,6 +724,7 @@ export function mapBackendToFrontendSlots(game: GameType, backendEq: Record<stri
             weight: 0,
             upgrade: upgrade,
             maxUpgrade: itemData.max_upgrade,
+            category: itemData.category,
             gemId: itemData.gem_id || undefined,
             count: itemData.count
         };
