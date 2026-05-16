@@ -77,7 +77,14 @@ def group_weapon_variants(items: list[dict]) -> list[dict]:
                 for i in group
                 if i["id"] != base["id"]
             ]
-            result.append({**base, "base_id": base["id"], "base_name": base["name"], "variants": variants})
+            result.append(
+                {
+                    **base,
+                    "base_id": base["id"],
+                    "base_name": base["name"],
+                    "variants": variants,
+                }
+            )
     return result
 
 
