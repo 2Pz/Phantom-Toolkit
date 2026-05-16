@@ -56,7 +56,6 @@ SLOT_DEFINITIONS: dict[str, dict[str, tuple[str, str, list[str] | None]]] = {
                 "Info Item",
                 "None",
                 "Remembrance",
-                "Great Rune",
                 "Spirit Summon - Lesser",
                 "Spirit Summon - Greater",
             ],
@@ -74,10 +73,14 @@ SLOT_DEFINITIONS: dict[str, dict[str, tuple[str, str, list[str] | None]]] = {
                 "Info Item",
                 "None",
                 "Remembrance",
-                "Great Rune",
                 "Spirit Summon - Lesser",
                 "Spirit Summon - Greater",
             ],
+        ),
+        "great_rune": (
+            "EquipParamGoods.csv",
+            "goods_type",
+            ["Great Rune"],
         ),
         "physick": (
             "EquipParamGoods.csv",

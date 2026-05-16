@@ -109,6 +109,16 @@ export const SLOT_ICONS: Record<string, React.ReactNode> = {
       <path d="M50,15 C50,15 30,40 30,65 C30,85 40,90 50,90 C60,90 70,85 70,65 C70,40 50,15 50,15 Z" />
       <circle cx="50" cy="65" r="10" fill="black" opacity="0.3" />
     </svg>
+  ),
+  GREAT_RUNE: (
+    <svg className="w-12 h-12 opacity-25" viewBox="0 0 100 100" fill="currentColor">
+      {/* Elden Ring Great Rune silhouette */}
+      <circle cx="50" cy="50" r="28" fill="none" stroke="currentColor" strokeWidth="3" />
+      <circle cx="50" cy="50" r="10" fill="none" stroke="currentColor" strokeWidth="2" />
+      <path d="M50,22 L50,10 M50,78 L50,90 M22,50 L10,50 M78,50 L90,50" stroke="currentColor" strokeWidth="2.5" />
+      <path d="M30,30 L22,22 M70,30 L78,22 M30,70 L22,78 M70,70 L78,78" stroke="currentColor" strokeWidth="2" />
+      <circle cx="50" cy="50" r="4" fill="currentColor" opacity="0.5" />
+    </svg>
   )
 };
 
@@ -134,6 +144,7 @@ export const SLOT_CSV_MAPPING: Record<GameType, Record<string, SlotInfo>> = {
     QUICK_ITEM: { csv: 'EquipParamGoods.csv', slotKey: 'quick', slotType: SlotType.QUICK_ITEM },
     SPELL:      { csv: 'EquipParamGoods.csv', slotKey: 'spell', slotType: SlotType.SPELL },
     PHYSICK:    { csv: 'EquipParamGoods.csv', slotKey: 'physick', slotType: SlotType.PHYSICK },
+    GREAT_RUNE: { csv: 'EquipParamGoods.csv', slotKey: 'great_rune', slotType: SlotType.GREAT_RUNE },
   },
   DARK_SOULS_3: {
     WEAPON_R:   { csv: 'EquipParamWeapon.csv', slotKey: 'weapon', slotType: SlotType.WEAPON_R },
@@ -172,6 +183,7 @@ export function getSlotInfo(game: GameType, slotId: string): SlotInfo | undefine
   if (s.startsWith('quick'))    return mapping.QUICK_ITEM;
   if (s.startsWith('spell'))    return mapping.SPELL;
   if (s.startsWith('physick'))  return mapping.PHYSICK;
+  if (s.startsWith('great_rune')) return mapping.GREAT_RUNE;
 
   return undefined;
 }

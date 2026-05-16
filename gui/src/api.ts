@@ -21,6 +21,7 @@ function buildFrontendToBackendSlotMapping(game: GameType): Record<string, strin
         legs: 'leggings',
         physick_tear_1: 'physick_tear_1',
         physick_tear_2: 'physick_tear_2',
+        great_rune: 'great_rune',
     };
 
     if (game === 'DARK_SOULS_3') {
@@ -413,6 +414,7 @@ export function transformBackendPlayer(game: GameType, p: BackendPlayer): Player
             mapSlot("accessory_4", "talisman_4");
             mapSlot("physick_tear_1", "physick_tear_1");
             mapSlot("physick_tear_2", "physick_tear_2");
+            mapSlot("great_rune", "great_rune");
         }
 
         for (let i = 1; i <= 10; i++) {
@@ -742,6 +744,7 @@ export function mapBackendToFrontendSlots(game: GameType, backendEq: Record<stri
     mapSlot("leggings", "legs");
     mapSlot("physick_tear_1", "physick_tear_1");
     mapSlot("physick_tear_2", "physick_tear_2");
+    mapSlot("great_rune", "great_rune");
 
     if (game === 'DARK_SOULS_3') {
         // Legacy support

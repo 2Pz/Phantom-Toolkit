@@ -140,8 +140,21 @@ const EquipmentGrid: React.FC<EquipmentGridProps> = ({ slots, selectedSlot, onSe
         {renderSlot('hands', SlotType.ARMOR_HANDS)}
         {renderSlot('legs', SlotType.ARMOR_LEGS)}
       </div>
-      <div className="flex gap-1 mt-2">
-        {[1, 2, 3, 4].map(i => renderSlot(`talisman_${i}`, SlotType.TALISMAN))}
+      <div className="flex gap-12 mt-2">
+        <div className="flex flex-col gap-2">
+          <div className="flex gap-1">
+            {[1, 2, 3, 4].map(i => renderSlot(`talisman_${i}`, SlotType.TALISMAN))}
+          </div>
+        </div>
+        <div className="flex items-start -mt-12">
+          <div className="relative group">
+            <div className="absolute inset-[-4px] rounded-full border border-[#bfa571]/40 pointer-events-none group-hover:border-[#bfa571]/70 transition-colors" />
+            <div className="absolute inset-[-8px] rounded-full border border-[#bfa571]/10 pointer-events-none" />
+            <div className="rounded-full bg-black/60 overflow-hidden border border-white/5 shadow-xl">
+              {renderSlot('great_rune', SlotType.GREAT_RUNE, "w-24 h-24")}
+            </div>
+          </div>
+        </div>
       </div>
 
       <div className="flex gap-1 mt-6">
