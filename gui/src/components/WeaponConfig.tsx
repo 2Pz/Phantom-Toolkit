@@ -19,7 +19,7 @@ const WeaponConfig: React.FC<WeaponConfigProps> = ({ game, item, onUpdate }) => 
         if (game === 'ELDEN_RING' && (isWeapon || item.maxUpgrade! > 0)) {
             // eslint-disable-next-line
             setLoadingGems(true);
-            searchItems(game, "", "Gems.csv", 1000).then(items => {
+            searchItems(game, "", "EquipParamGem.csv", undefined, undefined, 1000).then(items => {
                 setGems(items.sort((a, b) => a.name.localeCompare(b.name)));
             }).finally(() => setLoadingGems(false));
         }

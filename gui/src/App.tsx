@@ -2,7 +2,7 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { Item } from './types';
 import type { Build, GameType, StatusState, PlayerData } from './types';
-import { SLOT_CSV_MAPPING } from './constants';
+import { getSlotInfo } from './constants';
 import EquipmentGrid from './components/EquipmentGrid';
 import { AlertModal } from './components/Modal';
 import BackupTab from './components/BackupTab';
@@ -405,32 +405,6 @@ const MainTab: React.FC<{
   );
 };
 
-function getCategoryForSlot(game: GameType, slotId: string): string | undefined {
-  const mapping = SLOT_CSV_MAPPING[game];
-  if (!mapping) return undefined;
-
-  let type: string | undefined;
-
-  const s = slotId.toLowerCase();
-
-  if (s.startsWith('weapon_r')) type = 'WEAPON_R';
-  else if (s.startsWith('weapon_l')) type = 'WEAPON_L';
-  else if (s.startsWith('ammo_arrow') || s.startsWith('ammo_1')) type = 'AMMO_ARROW';
-  else if (s.startsWith('ammo_bolt') || s.startsWith('ammo_2')) type = 'AMMO_BOLT';
-  else if (s === 'head') type = 'ARMOR_HEAD';
-  else if (s === 'chest') type = 'ARMOR_CHEST';
-  else if (s === 'hands') type = 'ARMOR_HANDS';
-  else if (s === 'legs') type = 'ARMOR_LEGS';
-  else if (s.startsWith('ring')) type = 'RING';
-  else if (s.startsWith('talisman')) type = 'TALISMAN';
-  else if (s === 'covenant') type = 'COVENANT';
-  else if (s.startsWith('quick')) type = 'QUICK_ITEM';
-  else if (s.startsWith('spell')) type = 'SPELL';
-  else if (s.startsWith('physick')) type = 'PHYSICK';
-
-  return type ? mapping[type] : undefined;
-}
-
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'main' | 'build' | 'toolkit' | 'backup'>('main');
   const [selectedGame, setSelectedGame] = useState<GameType>('ELDEN_RING');
@@ -559,31 +533,30 @@ const App: React.FC = () => {
   // Search Effect
   useEffect(() => {
     const doSearch = async () => {
-      // If no slot selected or looking at another player, clear results
       if (!selectedSlot || (viewedName !== localName && viewedName !== '')) {
         setSearchResults([]);
         return;
       }
 
-      const category = getCategoryForSlot(selectedGame, selectedSlot);
-      if (!category) {
+      const slotInfo = getSlotInfo(selectedGame, selectedSlot);
+      if (!slotInfo) {
         setSearchResults([]);
         return;
       }
 
       setIsSearching(true);
-
-      // Search with empty query implies "list all" (or first N) for that category
       const query = searchQuery;
-      // Backend handles empty q + valid csv
-      const results = await searchItems(selectedGame, query, category, 50);
+      const results = await searchItems(
+        selectedGame, query,
+        slotInfo.csv,
+        slotInfo.slotType,
+        slotInfo.slotKey,
+        50,
+      );
       setSearchResults(results);
       setIsSearching(false);
     };
 
-    // Debounce only if there is a query, otherwise load immediate? 
-    // Actually debounce is fine, but maybe shorter for empty query?
-    // Let's keep it simple: 300ms debounce is fine.
     const timeout = setTimeout(doSearch, 300);
     return () => clearTimeout(timeout);
   }, [searchQuery, selectedSlot, selectedGame, viewedName, localName]);
@@ -747,14 +720,6 @@ const App: React.FC = () => {
     reader.onload = async (e) => {
       try {
         const json = JSON.parse(e.target?.result as string);
-        // Support both structure formats if accidentally nested or not
-        // Support both structure formats if accidentally nested or not
-        // unused 'content' var was here, effectively we just used json directly below or need content usage?
-        // The original code used json.build checks. 
-        // Let's see: if (!json.build && !json.equipment), maybe content logic was intended but unused.
-        // I will keep the logic but remove unused assignment if possible. 
-        // Actually, looking at original code: const content = ...; then if (json.build) ...
-        // 'content' IS unused.
 
         if (json.build) {
           setLocalBuild(json.build);

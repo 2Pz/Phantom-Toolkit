@@ -28,7 +28,6 @@ export interface Item {
   weight?: number;
   upgrade?: number;
   maxUpgrade?: number;
-  infusion?: string;
   gemId?: number;
 }
 

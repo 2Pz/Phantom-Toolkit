@@ -1,37 +1,5 @@
 import { GameType, Item, PlayerData, StatusState, SlotType, BackendItem, AppConfig, BackupSettings, BackupEntry } from './types';
-
-function getTypeForCsv(csv: string): SlotType {
-    const lookup: Record<string, SlotType> = {
-        'er_weapons.csv': SlotType.WEAPON_R,
-        'er_armors.csv': SlotType.ARMOR_HEAD,
-        'er_accessories.csv': SlotType.TALISMAN,
-        'er_spells.csv': SlotType.SPELL,
-        'er_items.csv': SlotType.QUICK_ITEM,
-        'ds3_weapons.csv': SlotType.WEAPON_R,
-        'ds3_armors.csv': SlotType.ARMOR_HEAD,
-        'ds3_rings.csv': SlotType.RING,
-        'ds3_spells.csv': SlotType.SPELL,
-        'ds3_items.csv': SlotType.QUICK_ITEM,
-    };
-    return lookup[csv] || SlotType.WEAPON_R;
-}
-
-function getTypeForBackendKey(beKey: string): SlotType {
-    const key = beKey.toLowerCase();
-    if (key.includes('head') || key.includes('helmet')) return SlotType.ARMOR_HEAD;
-    if (key.includes('chest') || key.includes('armor')) return SlotType.ARMOR_CHEST;
-    if (key.includes('hand') || key.includes('gauntlet')) return SlotType.ARMOR_HANDS;
-    if (key.includes('leg') || key.includes('leggings')) return SlotType.ARMOR_LEGS;
-    if (key.includes('ring')) return SlotType.RING;
-    if (key.includes('accessory') || key.includes('talisman')) return SlotType.TALISMAN;
-    if (key.includes('arrow') || key.includes('ammo_1')) return SlotType.AMMO_ARROW;
-    if (key.includes('bolt') || key.includes('ammo_2')) return SlotType.AMMO_BOLT;
-    if (key.includes('magic') || key.includes('spell')) return SlotType.SPELL;
-    if (key.includes('quick_item') || key.includes('quick_')) return SlotType.QUICK_ITEM;
-    if (key.includes('covenant')) return SlotType.COVENANT;
-    if (key.includes('physick')) return SlotType.PHYSICK;
-    return SlotType.WEAPON_R;
-}
+import { getSlotInfo } from './constants';
 
 const API_BASE = import.meta.env.PROD ? '' : 'http://127.0.0.1:8000';
 
@@ -188,17 +156,23 @@ export async function toggleCheat(game: GameType, cheat: string, enable: boolean
     await fetch(`${API_BASE}/${toBackendGame(game)}/cheats/${backendName}/${action}`, { method: 'POST' });
 }
 
-export async function searchItems(game: GameType, query: string, csv?: string, limit?: number): Promise<Item[]> {
+export async function searchItems(
+    game: GameType,
+    query: string,
+    csv?: string,
+    slotType?: SlotType,
+    slotKey?: string,
+    limit?: number,
+): Promise<Item[]> {
     try {
         const gameKey = toBackendGame(game);
-        let url = `${API_BASE}/${gameKey}/items/search?q=${encodeURIComponent(query)}`;
-        if (csv) {
-            url += `&csv=${encodeURIComponent(csv)}`;
-        }
-        if (limit) {
-            url += `&limit=${limit}`;
-        }
-        // Language is handled by backend config default
+        const params = new URLSearchParams();
+        params.set('q', query);
+        if (csv) params.set('csv', csv);
+        if (slotKey) params.set('slot', slotKey);
+        if (limit) params.set('limit', limit.toString());
+
+        const url = `${API_BASE}/${gameKey}/items/search?${params.toString()}`;
 
         const res = await fetch(url);
         if (!res.ok) return [];
@@ -209,7 +183,7 @@ export async function searchItems(game: GameType, query: string, csv?: string, l
             name: d.name,
             icon_id: d.icon_id?.toString() || '',
             image: (d.icon_id && Number(d.icon_id) !== 0) ? `${API_BASE}/${gameKey}/icons/${d.icon_id}` : '',
-            type: getTypeForCsv(csv || ''), // Use helper here
+            type: slotType || SlotType.WEAPON_R,
             description: '',
             weight: 0,
             maxUpgrade: d.max_upgrade
@@ -350,7 +324,7 @@ export function transformBackendPlayer(game: GameType, p: BackendPlayer): Player
                 }
 
                 const displayName = upgrade ? `${itemData.name} +${upgrade}` : itemData.name;
-                const itemType = getTypeForBackendKey(beKey);
+                const itemType = getSlotInfo(game, feKey)?.slotType ?? SlotType.WEAPON_R;
                 const showImage = itemData.icon_id && Number(itemData.icon_id) !== 0 && !itemData.name.toLowerCase().includes('unarmed') && !itemData.name.toLowerCase().includes('unknown');
 
                 slots[feKey] = {
@@ -617,7 +591,7 @@ export async function writeBuild(game: GameType, playerNum: number, slots: Recor
         }
     }
 
-    console.log("Applying build payload:", JSON.stringify(payload, null, 2));
+    if (import.meta.env.DEV) console.log("Applying build payload:", JSON.stringify(payload, null, 2));
 
     const res = await fetch(`${API_BASE}/${gameKey}/players/${playerNum}/build`, {
         method: 'POST',
@@ -692,7 +666,7 @@ export function mapBackendToFrontendSlots(game: GameType, backendEq: Record<stri
         // Suppress images for Unarmed/Unknown or ID 0 as requested
         const showImage = itemData.icon_id && Number(itemData.icon_id) !== 0 && !displayName.toLowerCase().includes('unarmed') && !displayName.toLowerCase().includes('unknown');
 
-        const itemType = getTypeForBackendKey(beKey);
+        const itemType = getSlotInfo(game, feKey)?.slotType ?? SlotType.WEAPON_R;
 
         slots[feKey] = {
             id: itemData.id.toString(),
