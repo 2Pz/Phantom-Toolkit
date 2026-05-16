@@ -55,6 +55,32 @@ class ItemRow:
     raw: dict[str, Any] | None = None
 
 
+def group_weapon_variants(items: list[dict]) -> list[dict]:
+    """Group weapon items by base ID, returning base entries with variant lists.
+
+    Infusible weapons have affinity variants at id = base + n*100.
+    Groups by base_id = id - (id % 10000). Single-item groups are unique weapons.
+    """
+    groups: dict[int, list[dict]] = {}
+    for item in items:
+        base_id = item["id"] - (item["id"] % 10000)
+        groups.setdefault(base_id, []).append(item)
+
+    result: list[dict] = []
+    for group in groups.values():
+        if len(group) == 1:
+            result.append({**group[0], "variants": None})
+        else:
+            base = next((i for i in group if i["id"] % 10000 == 0), group[0])
+            variants = [
+                {"id": i["id"], "name": i["name"]}
+                for i in group
+                if i["id"] != base["id"]
+            ]
+            result.append({**base, "base_id": base["id"], "base_name": base["name"], "variants": variants})
+    return result
+
+
 # Maps internal game keys to physical directory names in the items/ folder.
 _GAME_DIR_MAP: dict[str, list[str]] = {
     "eldenring": ["ER", "eldenring", "EldenRing"],
@@ -131,6 +157,11 @@ class ItemAssetService:
 
     def list_csv_files(self) -> list[str]:
         return sorted([p.name for p in self.items_dir().glob("*.csv")])
+
+    def get_distinct_categories(self, csv_name: str, column: str) -> tuple[str, ...]:
+        """Return all distinct values from a column in a CSV file."""
+        path = self.items_dir() / csv_name
+        return _distinct_csv_values(path, column)
 
     def get_distinct_weapon_categories(self) -> list[str]:
         """Return all weapon categories from EquipParamWeapon.csv, excluding ammo types."""

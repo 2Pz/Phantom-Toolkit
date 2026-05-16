@@ -7,7 +7,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel
 
 from phantom_backend.services.item_catalog import lookup as catalog_lookup
-from phantom_backend.services.items import ItemAssetService
+from phantom_backend.services.items import ItemAssetService, group_weapon_variants
 
 router = APIRouter(prefix="/{game}", tags=["items"])
 
@@ -16,6 +16,23 @@ router = APIRouter(prefix="/{game}", tags=["items"])
 def list_csvs(game: str):
     svc = ItemAssetService(game_key=game)
     return {"csvs": svc.list_csv_files()}
+
+
+@router.get("/items/slot-categories")
+def get_slot_categories(game: str, slot: str):
+    svc = ItemAssetService(game_key=game)
+    resolved = catalog_lookup(game, slot)
+    if not resolved:
+        return {"categories": []}
+    csv_name, cat_col, allowed_cats = resolved
+    if allowed_cats is None:
+        if csv_name == "EquipParamWeapon.csv":
+            cats = svc.get_distinct_weapon_categories()
+        else:
+            cats = list(svc.get_distinct_categories(csv_name, cat_col))
+    else:
+        cats = allowed_cats
+    return {"categories": cats}
 
 
 @router.get("/items/search")
@@ -35,15 +52,22 @@ def search_items(  # noqa: PLR0913
         if resolved:
             csv_name, _cat_col, allowed_cats = resolved
             csv = csv_name
-            if allowed_cats is None and csv_name == "EquipParamWeapon.csv":
-                category = svc.get_distinct_weapon_categories()
-            elif allowed_cats is not None:
-                category = allowed_cats
+            if not category:
+                if allowed_cats is None and csv_name == "EquipParamWeapon.csv":
+                    category = svc.get_distinct_weapon_categories()
+                elif allowed_cats is not None:
+                    category = allowed_cats
 
+    # For weapons, request more raw items so variant grouping yields meaningful results.
+    # Each base weapon can have ~13 affinity rows, so multiply the limit to account for them.
+    internal_limit = max(limit, limit * 20) if csv == "EquipParamWeapon.csv" else limit
     hits = svc.search_items(
-        csv_name=csv, q=q, categories=category, language=lang, limit=limit
+        csv_name=csv, q=q, categories=category, language=lang, limit=internal_limit
     )
-    return {"items": [h.__dict__ for h in hits]}
+    items = [h.__dict__ for h in hits]
+    if csv == "EquipParamWeapon.csv":
+        items = group_weapon_variants(items)
+    return {"items": items[:limit]}
 
 
 @router.get("/items/get")

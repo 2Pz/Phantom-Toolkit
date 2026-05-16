@@ -6,7 +6,7 @@ import { getSlotInfo } from './constants';
 import EquipmentGrid from './components/EquipmentGrid';
 import { AlertModal } from './components/Modal';
 import BackupTab from './components/BackupTab';
-import { detectGame, getPlayers, getRecentPlayers, quitToMenu, fixInfiniteLoading, toggleFogWall, writeStats, toggleCheat as apiToggleCheat, searchItems, writeBuild, inspectBuild, mapBackendToFrontendSlots, convertBuildToSaveFormat, saveBuild, browseSaveFile, getConfig, getMetadata, openUrl, updateConfig } from './api';
+import { detectGame, getPlayers, getRecentPlayers, quitToMenu, fixInfiniteLoading, toggleFogWall, writeStats, toggleCheat as apiToggleCheat, searchItems, writeBuild, inspectBuild, mapBackendToFrontendSlots, convertBuildToSaveFormat, saveBuild, browseSaveFile, getConfig, getMetadata, openUrl, updateConfig, getSlotCategories } from './api';
 import type { AppMetadata } from './api';
 import WeaponConfig from './components/WeaponConfig';
 import { LanguageSelector } from './components/LanguageSelector';
@@ -466,6 +466,8 @@ const App: React.FC = () => {
   // Search State
   const [searchResults, setSearchResults] = useState<Item[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [availableCategories, setAvailableCategories] = useState<string[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState<string>('');
 
   const [sessionPlayers, setSessionPlayers] = useState<PlayerData[]>([]);
   const [recentPlayers, setRecentPlayers] = useState<PlayerData[]>([]);
@@ -551,6 +553,7 @@ const App: React.FC = () => {
         slotInfo.csv,
         slotInfo.slotType,
         slotInfo.slotKey,
+        selectedCategory || undefined,
         50,
       );
       setSearchResults(results);
@@ -559,9 +562,26 @@ const App: React.FC = () => {
 
     const timeout = setTimeout(doSearch, 300);
     return () => clearTimeout(timeout);
-  }, [searchQuery, selectedSlot, selectedGame, viewedName, localName]);
+  }, [searchQuery, selectedSlot, selectedGame, viewedName, localName, selectedCategory]);
 
-
+  // Fetch available categories when slot/game changes
+  useEffect(() => {
+    if (!selectedSlot) {
+      setAvailableCategories([]);
+      setSelectedCategory('');
+      return;
+    }
+    const slotInfo = getSlotInfo(selectedGame, selectedSlot);
+    if (!slotInfo) {
+      setAvailableCategories([]);
+      setSelectedCategory('');
+      return;
+    }
+    getSlotCategories(selectedGame, slotInfo.slotKey).then(cats => {
+      setAvailableCategories(cats);
+      setSelectedCategory('');
+    });
+  }, [selectedSlot, selectedGame]);
 
   const localPlayer: PlayerData = {
     name: localName,
@@ -1123,6 +1143,18 @@ const App: React.FC = () => {
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                 />
+                {availableCategories.length > 1 && (
+                  <select
+                    value={selectedCategory}
+                    onChange={(e) => setSelectedCategory(e.target.value)}
+                    className="w-full mt-2 py-1 px-2 text-xs tracking-widest uppercase fantasy-font bg-black/80 border border-white/20 outline-none focus:border-[#bfa571] transition-colors"
+                  >
+                    <option value="">ALL</option>
+                    {availableCategories.map(cat => (
+                      <option key={cat} value={cat}>{cat}</option>
+                    ))}
+                  </select>
+                )}
               </div>
 
               <div className="flex-1 overflow-y-auto p-3 custom-scrollbar">

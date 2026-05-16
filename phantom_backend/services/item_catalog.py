@@ -27,7 +27,6 @@ SLOT_DEFINITIONS: dict[str, dict[str, tuple[str, str, list[str] | None]]] = {
             "EquipParamGoods.csv",
             "goods_type",
             [
-                "Spell",
                 "Sorcery",
                 "Incantation",
                 "Self Buff - Sorcery",
@@ -38,7 +37,6 @@ SLOT_DEFINITIONS: dict[str, dict[str, tuple[str, str, list[str] | None]]] = {
             "EquipParamGoods.csv",
             "goods_type",
             [
-                "Spell",
                 "Sorcery",
                 "Incantation",
                 "Self Buff - Sorcery",

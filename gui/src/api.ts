@@ -162,6 +162,7 @@ export async function searchItems(
     csv?: string,
     slotType?: SlotType,
     slotKey?: string,
+    category?: string,
     limit?: number,
 ): Promise<Item[]> {
     try {
@@ -170,6 +171,7 @@ export async function searchItems(
         params.set('q', query);
         if (csv) params.set('csv', csv);
         if (slotKey) params.set('slot', slotKey);
+        if (category) params.set('category', category);
         if (limit) params.set('limit', limit.toString());
 
         const url = `${API_BASE}/${gameKey}/items/search?${params.toString()}`;
@@ -186,10 +188,26 @@ export async function searchItems(
             type: slotType || SlotType.WEAPON_R,
             description: '',
             weight: 0,
-            maxUpgrade: d.max_upgrade
+            maxUpgrade: d.max_upgrade,
+            baseId: d.base_id?.toString(),
+            baseName: d.base_name,
+            variants: d.variants || undefined,
         }));
     } catch (e) {
         console.error("Search error", e);
+        return [];
+    }
+}
+
+export async function getSlotCategories(game: GameType, slotKey: string): Promise<string[]> {
+    try {
+        const gameKey = toBackendGame(game);
+        const res = await fetch(`${API_BASE}/${gameKey}/items/slot-categories?slot=${slotKey}`);
+        if (!res.ok) return [];
+        const data = await res.json();
+        return data.categories || [];
+    } catch (e) {
+        console.error("Failed to get slot categories", e);
         return [];
     }
 }

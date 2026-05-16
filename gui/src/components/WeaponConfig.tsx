@@ -10,20 +10,21 @@ interface WeaponConfigProps {
 
 const WeaponConfig: React.FC<WeaponConfigProps> = ({ game, item, onUpdate }) => {
     const [gems, setGems] = useState<Item[]>([]);
-    const [loadingGems, setLoadingGems] = useState(false);
     const [isGemSelectorOpen, setIsGemSelectorOpen] = useState(false);
     const [gemSearch, setGemSearch] = useState("");
 
     useEffect(() => {
         const isWeapon = item.type.toLowerCase().includes('weapon') || item.type.toLowerCase().includes('shield');
         if (game === 'ELDEN_RING' && (isWeapon || item.maxUpgrade! > 0)) {
-            // eslint-disable-next-line
-            setLoadingGems(true);
-            searchItems(game, "", "EquipParamGem.csv", undefined, undefined, 1000).then(items => {
+            searchItems(game, "", "EquipParamGem.csv", undefined, undefined, undefined, 1000).then(items => {
                 setGems(items.sort((a, b) => a.name.localeCompare(b.name)));
-            }).finally(() => setLoadingGems(false));
+            });
         }
     }, [game, item.type, item.maxUpgrade]);
+
+    const handleVariantChange = (variant: { id: number; name: string }) => {
+        onUpdate({ ...item, id: variant.id.toString(), name: variant.name });
+    };
 
     const handleUpgradeChange = (val: number) => {
         onUpdate({ ...item, upgrade: val });
@@ -41,6 +42,7 @@ const WeaponConfig: React.FC<WeaponConfigProps> = ({ game, item, onUpdate }) => 
     );
 
     const currentGem = gems.find(g => Number(g.id) === item.gemId);
+    const loadingGems = game === 'ELDEN_RING' && gems.length === 0;
 
     if (item.maxUpgrade === undefined || item.maxUpgrade === 0) {
         return null;
@@ -49,6 +51,30 @@ const WeaponConfig: React.FC<WeaponConfigProps> = ({ game, item, onUpdate }) => 
     return (
         <div className="p-4 bg-black/60 border border-[#bfa571]/30 rounded mt-4 backdrop-blur-sm">
             <h3 className="text-lg font-bold text-[#bfa571] mb-2 font-serif">Configure Weapon</h3>
+
+            {/* Variant/Affinity Dropdown */}
+            {item.variants && item.variants.length > 0 && (
+                <div className="mb-4">
+                    <label className="block text-gray-300 text-sm mb-1">Affinity</label>
+                    <select
+                        value={item.id}
+                        onChange={(e) => {
+                            if (e.target.value === item.baseId) {
+                                handleVariantChange({ id: parseInt(item.baseId!), name: item.baseName || item.name });
+                            } else {
+                                const variant = item.variants!.find(v => v.id.toString() === e.target.value);
+                                if (variant) handleVariantChange(variant);
+                            }
+                        }}
+                        className="w-full bg-black/80 border border-white/20 text-white p-2 rounded focus:border-[#bfa571] outline-none text-sm"
+                    >
+                        <option value={item.baseId}>Standard</option>
+                        {item.variants.map(v => (
+                            <option key={v.id} value={v.id}>{v.name}</option>
+                        ))}
+                    </select>
+                </div>
+            )}
 
             {/* Upgrade Slider */}
             <div className="mb-4">
