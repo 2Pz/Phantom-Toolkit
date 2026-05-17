@@ -693,7 +693,7 @@ const App: React.FC = () => {
     // Only ammo gets a safe default count; quick items default to "keep current quantity"
     // unless the user explicitly adjusts the slider (sets `count`).
     const newItem = selectedSlot.startsWith('ammo')
-      ? { ...item, count: item.count ?? 99 }
+      ? { ...item, count: item.count ?? item.max_num ?? 99 }
       : { ...item };
 
     // Keep it as pending to allow customization (upgrades, etc.)
@@ -1125,20 +1125,22 @@ const App: React.FC = () => {
                             }
                           }}
                         />
-                        {selectedSlot && (selectedSlot.startsWith('quick') || selectedSlot.startsWith('ammo')) && !configItem.is_only_one && (
+                        {selectedSlot && (selectedSlot.startsWith('quick') || selectedSlot.startsWith('ammo')) && !configItem.is_only_one && (() => {
+                          const maxQty = configItem.max_num ?? 99;
+                          return (
                           <div className="p-4 bg-black/60 border border-[#bfa571]/30 rounded mt-4 backdrop-blur-sm">
                             <h3 className="text-lg font-bold text-[#bfa571] mb-2 font-serif">Configure Quantity</h3>
                             <div className="flex justify-between mb-1">
-                              <label className="text-gray-300 text-sm">Quantity</label>
+                              <label className="text-gray-300 text-sm">Quantity (max {maxQty})</label>
                               <span className="text-[#bfa571] font-bold font-mono">
-                                {configItem.count ?? (selectedSlot?.startsWith('ammo') ? 99 : 'KEEP')}
+                                {configItem.count ?? (selectedSlot?.startsWith('ammo') ? maxQty : 'KEEP')}
                               </span>
                             </div>
                             <input
                               type="range"
                               min="1"
-                              max="99"
-                              value={configItem.count ?? (selectedSlot?.startsWith('ammo') ? 99 : 1)}
+                              max={maxQty}
+                              value={configItem.count ?? (selectedSlot?.startsWith('ammo') ? maxQty : 1)}
                               onChange={(e) => {
                                 const newCount = parseInt(e.target.value);
                                 const updated = { ...configItem, count: newCount };
@@ -1154,10 +1156,11 @@ const App: React.FC = () => {
                             />
                             <div className="flex justify-between text-xs text-gray-500 mt-1">
                               <span>1</span>
-                              <span>99</span>
+                              <span>{maxQty}</span>
                             </div>
                           </div>
-                        )}
+                          );
+                        })()}
 
                         <div className="flex gap-2 w-full mt-2">
                           <button

@@ -195,6 +195,7 @@ export async function searchItems(
             baseName: d.base_name,
             variants: d.variants || undefined,
             is_only_one: d.is_only_one,
+            max_num: d.max_num,
         }));
     } catch (e) {
         console.error("Search error", e);
@@ -731,6 +732,7 @@ export function mapBackendToFrontendSlots(game: GameType, backendEq: Record<stri
             gemId: itemData.gem_id || undefined,
             count: itemData.count,
             is_only_one: itemData.is_only_one,
+            max_num: itemData.max_num,
         };
     };
 

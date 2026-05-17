@@ -53,24 +53,35 @@ class ItemRow:
     max_upgrade: int = 0
     category: str | None = None
     is_only_one: bool = False
+    max_num: int | None = None
     raw: dict[str, Any] | None = None
 
 
-def load_is_only_one_map(game_key: str) -> dict[int, bool]:
-    """Load isOnlyOne column from EquipParamGoods.csv for a game.
-
-    Returns a dict mapping item base ID -> is_only_one flag.
-    Items not in the CSV (weapons, armor, etc.) default to is_only_one=True.
-    """
+def _load_goods_csv(game_key: str) -> dict[int, ItemRow]:
+    """Load EquipParamGoods.csv for a game, returning the full table."""
     try:
         svc = ItemAssetService(game_key=game_key)
         csv_path = svc.items_dir() / "EquipParamGoods.csv"
         if csv_path.exists():
-            table = _load_csv(csv_path, "en", game_key)
-            return {item_id: row.is_only_one for item_id, row in table.items()}
+            return _load_csv(csv_path, "en", game_key)
     except Exception:
         pass
     return {}
+
+
+def load_is_only_one_map(game_key: str) -> dict[int, bool]:
+    """Load isOnlyOne column from EquipParamGoods.csv for a game."""
+    return {
+        item_id: row.is_only_one for item_id, row in _load_goods_csv(game_key).items()
+    }
+
+
+def load_max_num_map(game_key: str) -> dict[int, int | None]:
+    """Load maxNum column from EquipParamGoods.csv for a game.
+
+    Returns a dict mapping item base ID -> max_num (or None if missing).
+    """
+    return {item_id: row.max_num for item_id, row in _load_goods_csv(game_key).items()}
 
 
 def group_weapon_variants(items: list[dict]) -> list[dict]:
@@ -488,7 +499,11 @@ def _load_csv(path: Path, language: str, game: str) -> dict[int, ItemRow]:
             elif upgrade_type in ("Twinkling Titanite", "Titanite Scale"):
                 max_upgrade = 5
 
-            is_only_one = row.get("isOnlyOne", "0").strip('" ') == "1"
+            is_only_one = row.get("isOnlyOne", "0").replace('"', "").strip() == "1"
+            raw_max = row.get("maxNum")
+            max_num = (
+                int(raw_max.replace('"', "").strip()) if raw_max is not None else None
+            )
 
             out[item_id] = ItemRow(
                 id=item_id,
@@ -498,6 +513,7 @@ def _load_csv(path: Path, language: str, game: str) -> dict[int, ItemRow]:
                 max_upgrade=max_upgrade,
                 category=category,
                 is_only_one=is_only_one,
+                max_num=max_num,
                 raw=row,
             )
         return out
