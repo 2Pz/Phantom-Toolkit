@@ -6,7 +6,11 @@ from phantom_backend.core.errors import PhantomError
 from phantom_backend.core.memory import MemoryClient
 from phantom_backend.core.resolver import SymbolResolver
 from phantom_backend.services.game_offsets import get_hex_int, load_manager_offsets
-from phantom_backend.services.pot_groups import get_flask_groups, get_pot_groups
+from phantom_backend.services.pot_groups import (
+    get_er_flask_groups,
+    get_flask_groups,
+    get_pot_groups,
+)
 
 
 @dataclass(frozen=True)
@@ -87,6 +91,7 @@ class EquipApplyService:
             errors: dict[str, str] = {}
             warnings: dict[str, str] = {}
             PotGroups = get_pot_groups()
+            ERFlaskGroups = get_er_flask_groups()
 
             def norm(v: Any) -> int:
                 if v is None:
@@ -535,6 +540,75 @@ class EquipApplyService:
                 _equip_slot(slot, idx)
                 return True
 
+            def _check_slot_has_er_flask(slot: int, group_num: int) -> bool:
+                if not (22 <= slot <= 31):
+                    return False
+                try:
+                    qi = slot - 22
+                    quick_item_offset = 0x1C0 + (qi * 4)
+                    cur = self._mem.read_i32(equip_game_data + quick_item_offset)
+                    if cur in (-1, 0xFFFFFFFF):
+                        return False
+                    base_id = cur & 0x0FFFFFFF
+                    return base_id in ERFlaskGroups.get_group_items(group_num)
+                except Exception:
+                    return False
+
+            def _equip_er_flask(
+                base_id: int, slot: int, quantity: int | None = None
+            ) -> bool:
+                group_num = ERFlaskGroups.get_group_for_item(int(base_id))
+                if group_num is None:
+                    return False
+
+                want_full = GOODS | (int(base_id) & 0x0FFFFFFF)
+
+                # 1. Unequip any already-equipped flask from this group (avoid conflicts)
+                for s in range(22, 32):
+                    if _check_slot_has_er_flask(s, group_num):
+                        _equip_slot(s, -1)
+
+                # 2. If desired flask already exists, equip it directly
+                idx = _get_item_idx(want_full)
+                if idx is not None:
+                    if quantity is not None:
+                        _update_quantity(idx, quantity)
+                    _equip_slot(slot, idx)
+                    return True
+
+                # 3. If any other flask from this group exists, overwrite its ID
+                for i in range(2688):
+                    try:
+                        inv = _inventory_list()
+                        cur = self._mem.read_i32(
+                            inv + i * lay.inv_entry_size + lay.inv_id_off
+                        )
+                    except Exception:
+                        continue
+                    if cur == -1:
+                        continue
+                    cur &= 0xFFFFFFFF
+                    type_bits = (cur >> 28) & 0xF
+                    item_base = cur & 0x0FFFFFFF
+                    if type_bits == 0x4 and item_base in ERFlaskGroups.get_group_items(
+                        group_num
+                    ):
+                        _overwrite_inventory_entry_id(i, want_full)
+                        if quantity is not None:
+                            _update_quantity(i, quantity)
+                        _equip_slot(slot, i)
+                        return True
+
+                # 4. As a last resort, give the flask
+                idx = _give_item(
+                    want_full, quantity=quantity if quantity is not None else 99
+                )
+                if idx is not None:
+                    _equip_slot(slot, idx)
+                    return True
+
+                return False
+
             used_weapon_idxs: set[int] = set()
 
             def _equip_weapon_with_aow(
@@ -621,7 +695,9 @@ class EquipApplyService:
                     full = ACCESSORY | (item_id & 0x0FFFFFFF)
                 elif 22 <= slot <= 31:
                     base_id = item_id & 0x0FFFFFFF
-                    # Try direct goods equip first, then fallback to group handling.
+                    # Route ER flasks through group handler to avoid conflicts
+                    if ERFlaskGroups.get_group_for_item(int(base_id)) is not None:
+                        return _equip_er_flask(int(base_id), slot, quantity=quantity)
                     full = GOODS | base_id
                 elif 32 <= slot <= 33 or slot == 34:
                     full = GOODS | (item_id & 0x0FFFFFFF)
@@ -828,6 +904,9 @@ class EquipApplyService:
         inv_entry_size = 0x10
         inv_id_off = 0x04
         tail_data_idx_off = 0x24
+        # Quick items confirmed at equip_game_data + 0x384 from equip scan.
+        # (offsets.toml quick_item_offsets values are stale — actual runtime offset is 0x384)
+        _DS3_QUICK_ITEM_BASE = 0x384
 
         equip_data = self._mem.allocate(0x40)
         item_give_data = self._mem.allocate(0x200)
@@ -1060,7 +1139,7 @@ class EquipApplyService:
                     return False
                 try:
                     qi = slot - 22
-                    quick_item_offset = 0x1C0 + (qi * 4)
+                    quick_item_offset = _DS3_QUICK_ITEM_BASE + (qi * 4)
                     cur = self._mem.read_i32(equip_game_data + quick_item_offset)
                     if cur in (-1, 0xFFFFFFFF):
                         return False
@@ -1069,83 +1148,70 @@ class EquipApplyService:
                 except Exception:
                     return False
 
+            def _get_slot_base_id(slot: int) -> int | None:
+                if not (22 <= slot <= 31):
+                    return None
+                try:
+                    qi = slot - 22
+                    quick_item_offset = _DS3_QUICK_ITEM_BASE + (qi * 4)
+                    cur = self._mem.read_i32(equip_game_data + quick_item_offset)
+                    if cur in (-1, 0xFFFFFFFF):
+                        return None
+                    return cur & 0x0FFFFFFF
+                except Exception:
+                    return None
+
             def _delete_ds3_item(idx: int) -> None:
                 inv = _inventory_list()
                 if not inv:
                     return
-                # Write -1 to ID at +4 to mark as deleted/empty
-                self._mem.write_u32(inv + idx * inv_entry_size + 4, 0xFFFFFFFF)
-
-            def _scan_inventory_for_group(group_num: int) -> int | None:
-                inv = _inventory_list()
-                if not inv:
-                    return None
-                # Scan same range as _get_item_idx (5000)
-                group_items = FlaskGroups.get_group_items(group_num)
-                for i in range(5000):
-                    cur_val = self._mem.read_i32(inv + i * inv_entry_size + inv_id_off)
-                    if cur_val == -1:
-                        continue
-                    cur_val &= 0xFFFFFFFF
-                    type_bits = (cur_val >> 28) & 0xF
-                    item_base = cur_val & 0x0FFFFFFF
-                    if type_bits == 0x4 and item_base in group_items:
-                        return i
-                return None
+                # Clear both raw ID (+0x00) and flagged ID (+0x04)
+                base = inv + idx * inv_entry_size
+                self._mem.write_u32(base, 0xFFFFFFFF)
+                self._mem.write_u32(base + 4, 0xFFFFFFFF)
 
             def _equip_ds3_flask(base_id: int, slot: int) -> bool:
                 group_num = FlaskGroups.get_group_for_item(int(base_id))
                 if group_num is None:
                     return False
-
                 full_id = GOODS | (int(base_id) & 0x0FFFFFFF)
-
-                # 1. Try exact match first
+                # Unequip this slot first if it has a flask from the same group
+                if 22 <= slot <= 31 and _check_slot_has_flask(slot, group_num):
+                    _equip_slot(slot, -1)
+                # Try exact match first to avoid duplicate _give_item
                 idx = _get_item_idx(full_id)
+                if idx is None:
+                    idx = _give_item(full_id, quantity=1)
+                    # _give_item may auto-equip to an empty quick slot; clear it
+                    if idx is not None:
+                        for s in range(22, 32):
+                            if s == slot:
+                                continue
+                            sid = _get_slot_base_id(s)
+                            if sid is not None and sid == base_id:
+                                _equip_slot(s, -1)
                 if idx is not None:
-                    if 22 <= slot <= 31 and _check_slot_has_flask(slot, group_num):
-                        _equip_slot(slot, -1)
                     _equip_slot(slot, idx)
+                    # Delete any old flasks from the same group that are no longer equipped
+                    group_items = FlaskGroups.get_group_items(group_num)
+                    for si in range(5000):
+                        try:
+                            raw = self._mem.read_i32(
+                                _inventory_list() + si * inv_entry_size + inv_id_off
+                            )
+                            if raw == -1:
+                                continue
+                            flagged = raw & 0xFFFFFFFF
+                            tb = (flagged >> 28) & 0xF
+                            base = flagged & 0x0FFFFFFF
+                            if tb == 0x4 and base in group_items and si != idx and not any(
+                                _get_slot_base_id(s) == base
+                                for s in range(22, 32)
+                            ):
+                                _delete_ds3_item(si)
+                        except Exception:
+                            pass
                     return True
-
-                # 2. Try alternative (empty/full)
-                is_filled = (base_id % 2) == 1
-                if is_filled:
-                    empty_base = base_id - 1
-                    empty_full = GOODS | (empty_base & 0x0FFFFFFF)
-                    alt_idx = _get_item_idx(empty_full)
-                else:
-                    full_base = base_id + 1
-                    full_full = GOODS | (full_base & 0x0FFFFFFF)
-                    alt_idx = _get_item_idx(full_full)
-
-                if alt_idx is not None:
-                    if 22 <= slot <= 31 and _check_slot_has_flask(slot, group_num):
-                        _equip_slot(slot, -1)
-                    _equip_slot(slot, alt_idx)
-                    return True
-
-                # 3. Search for ANY flask in group -> DELETE it -> GIVE desired one
-                candidate_idx = _scan_inventory_for_group(group_num)
-                if candidate_idx is not None:
-                    # Unequip slots using this group first.
-                    for s in range(22, 32):
-                        if _check_slot_has_flask(s, group_num):
-                            _equip_slot(s, -1)
-
-                    _delete_ds3_item(candidate_idx)
-                    # Give the new item
-                    new_idx = _give_item(full_id, quantity=1)
-                    if new_idx is not None:
-                        _equip_slot(slot, new_idx)
-                        return True
-
-                # 4. Fallback: Try giving anyway (maybe we have none)
-                new_idx = _give_item(full_id, quantity=1)
-                if new_idx is not None:
-                    _equip_slot(slot, new_idx)
-                    return True
-
                 return False
 
             def _equip_any_item(item_id: int, slot: int, quantity: int = 99) -> bool:
@@ -1161,7 +1227,9 @@ class EquipApplyService:
                     full = ACCESSORY | (item_id & 0x0FFFFFFF)
                 elif 22 <= slot <= 38:
                     base_id = item_id & 0x0FFFFFFF
-                    # Try direct goods equip first, then fallback to flask-group handling.
+                    # Route DS3 flasks through group handler to unequip first
+                    if FlaskGroups.get_group_for_item(int(base_id)) is not None:
+                        return _equip_ds3_flask(int(base_id), slot)
                     full = GOODS | base_id
                 else:
                     full = item_id & 0xFFFFFFFF

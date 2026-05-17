@@ -98,56 +98,10 @@ def get_pot_groups() -> type[_PotGroupsProto]:
 
 class _FallbackFlaskGroups:
     # Source of truth for DS3 item groups.
-    # Group 1: Estus Flasks
-    GROUP_1 = [
-        150,
-        151,
-        152,
-        153,
-        170,
-        171,
-        154,
-        155,
-        156,
-        157,
-        158,
-        159,
-        160,
-        161,
-        162,
-        163,
-        164,
-        165,
-        166,
-        167,
-        168,
-        169,
-    ]
-    # Group 2: Ashen Estus Flasks
-    GROUP_2 = [
-        190,
-        191,
-        192,
-        193,
-        194,
-        195,
-        196,
-        197,
-        198,
-        199,
-        200,
-        201,
-        202,
-        203,
-        204,
-        205,
-        206,
-        207,
-        208,
-        209,
-        210,
-        211,
-    ]
+    # Group 1: Estus Flasks (150-171)
+    GROUP_1 = list(range(150, 172))
+    # Group 2: Ashen Estus Flasks (190-211)
+    GROUP_2 = list(range(190, 212))
 
     @classmethod
     def get_group_for_item(cls, item_id: int) -> int | None:
@@ -174,3 +128,36 @@ class _FallbackFlaskGroups:
 def get_flask_groups() -> type[_PotGroupsProto]:
     """Load FlaskGroups for DS3."""
     return _FallbackFlaskGroups
+
+
+class _FallbackERFlaskGroups:
+    # Group 1: Flask of Crimson Tears (1000-1025)
+    GROUP_1 = list(range(1000, 1026))
+    # Group 2: Flask of Cerulean Tears (1050-1075)
+    GROUP_2 = list(range(1050, 1076))
+
+    @classmethod
+    def get_group_for_item(cls, item_id: int) -> int | None:
+        if 1000 <= item_id <= 1025:
+            return 1
+        if 1050 <= item_id <= 1075:
+            return 2
+        return None
+
+    @classmethod
+    def get_group_items(cls, group_num: int) -> list[int]:
+        if group_num == 1:
+            return list(cls.GROUP_1)
+        if group_num == 2:
+            return list(cls.GROUP_2)
+        return []
+
+    @classmethod
+    def is_er_flask(cls, item_id: int) -> bool:
+        return cls.get_group_for_item(item_id) is not None
+
+
+@lru_cache(maxsize=1)
+def get_er_flask_groups() -> type[_PotGroupsProto]:
+    """Load ERFlaskGroups for Elden Ring."""
+    return _FallbackERFlaskGroups
