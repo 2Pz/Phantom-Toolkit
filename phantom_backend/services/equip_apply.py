@@ -596,7 +596,9 @@ class EquipApplyService:
                         group_num
                     ):
                         _overwrite_inventory_entry_id(i, want_full)
-                        if quantity is not None and not is_only_one.get(int(base_id), True):
+                        if quantity is not None and not is_only_one.get(
+                            int(base_id), True
+                        ):
                             _update_quantity(i, quantity)
                         _equip_slot(slot, i)
                         return True
@@ -758,7 +760,11 @@ class EquipApplyService:
                         idx = _give_item(
                             full, quantity=quantity if quantity is not None else 99
                         )
-                    elif 22 <= slot <= 31 and quantity is not None and not is_only_one.get(item_id & 0x0FFFFFFF, True):
+                    elif (
+                        22 <= slot <= 31
+                        and quantity is not None
+                        and not is_only_one.get(item_id & 0x0FFFFFFF, True)
+                    ):
                         _update_quantity(idx, quantity)
                 if idx is None:
                     # Non-quick slots are treated as hard failures.
@@ -1282,9 +1288,8 @@ class EquipApplyService:
                     base_id_check = item_id & 0x0FFFFFFF
                     # Arrows/bolts (6-11) are WEAPON type — no isOnlyOne check
                     # Quick/toolbelt (22-38) are GOODS type — check isOnlyOne
-                    can_update = (
-                        6 <= slot <= 11
-                        or not is_only_one.get(base_id_check, True)
+                    can_update = 6 <= slot <= 11 or not is_only_one.get(
+                        base_id_check, True
                     )
                     if can_update:
                         _delete_ds3_item(idx)
