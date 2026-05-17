@@ -180,8 +180,9 @@ def enrich_equipment_slot(
             "name": found.name,
             "icon_id": found.icon_id,
             "max_upgrade": found.max_upgrade,
+            "is_only_one": found.is_only_one,
         }
-    return {"id": item_id, "name": f"Unknown [{item_id}]"}
+    return {"id": item_id, "name": f"Unknown [{item_id}]", "is_only_one": True}
 
 
 def csv_names_for_game(game_key: str) -> set[str]:

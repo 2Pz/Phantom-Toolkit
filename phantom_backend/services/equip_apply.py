@@ -6,6 +6,7 @@ from phantom_backend.core.errors import PhantomError
 from phantom_backend.core.memory import MemoryClient
 from phantom_backend.core.resolver import SymbolResolver
 from phantom_backend.services.game_offsets import get_hex_int, load_manager_offsets
+from phantom_backend.services.items import load_is_only_one_map
 from phantom_backend.services.pot_groups import (
     get_er_flask_groups,
     get_flask_groups,
@@ -92,6 +93,7 @@ class EquipApplyService:
             warnings: dict[str, str] = {}
             PotGroups = get_pot_groups()
             ERFlaskGroups = get_er_flask_groups()
+            is_only_one: dict[int, bool] = load_is_only_one_map("eldenring")
 
             def norm(v: Any) -> int:
                 if v is None:
@@ -514,7 +516,7 @@ class EquipApplyService:
                 # If desired pot exists, equip it.
                 idx = _get_item_idx(want_full)
                 if idx is not None:
-                    if quantity is not None:
+                    if quantity is not None and not is_only_one.get(int(base_id), True):
                         _update_quantity(idx, quantity)
                     _equip_slot(slot, idx)
                     return True
@@ -526,7 +528,7 @@ class EquipApplyService:
                     if other_idx is None:
                         continue
                     _overwrite_inventory_entry_id(other_idx, want_full)
-                    if quantity is not None:
+                    if quantity is not None and not is_only_one.get(int(base_id), True):
                         _update_quantity(other_idx, quantity)
                     _equip_slot(slot, other_idx)
                     return True
@@ -571,7 +573,7 @@ class EquipApplyService:
                 # 2. If desired flask already exists, equip it directly
                 idx = _get_item_idx(want_full)
                 if idx is not None:
-                    if quantity is not None:
+                    if quantity is not None and not is_only_one.get(int(base_id), True):
                         _update_quantity(idx, quantity)
                     _equip_slot(slot, idx)
                     return True
@@ -594,7 +596,7 @@ class EquipApplyService:
                         group_num
                     ):
                         _overwrite_inventory_entry_id(i, want_full)
-                        if quantity is not None:
+                        if quantity is not None and not is_only_one.get(int(base_id), True):
                             _update_quantity(i, quantity)
                         _equip_slot(slot, i)
                         return True
@@ -756,7 +758,7 @@ class EquipApplyService:
                         idx = _give_item(
                             full, quantity=quantity if quantity is not None else 99
                         )
-                    elif 22 <= slot <= 31 and quantity is not None:
+                    elif 22 <= slot <= 31 and quantity is not None and not is_only_one.get(item_id & 0x0FFFFFFF, True):
                         _update_quantity(idx, quantity)
                 if idx is None:
                     # Non-quick slots are treated as hard failures.
@@ -914,6 +916,7 @@ class EquipApplyService:
             errors: dict[str, str] = {}
             warnings: dict[str, str] = {}
             FlaskGroups = get_flask_groups()
+            is_only_one: dict[int, bool] = load_is_only_one_map("ds3")
 
             def norm(v: Any) -> int:
                 if v is None:
@@ -992,6 +995,13 @@ class EquipApplyService:
             def _get_item_by_idx(idx: int) -> int:
                 inv = _inventory_list()
                 return self._mem.read_i32(inv + idx * inv_entry_size)
+
+            def _update_quantity(idx: int, quantity: int) -> None:
+                inv = _inventory_list()
+                if not inv:
+                    return
+                base = inv + idx * inv_entry_size
+                self._mem.write_u32(base + 0x08, int(quantity) & 0xFFFFFFFF)
 
             def _run_shellcode(code: bytes, timeout_ms: int = 300) -> None:
                 buf = self._mem.allocate(len(code))
@@ -1170,7 +1180,9 @@ class EquipApplyService:
                 self._mem.write_u32(base, 0xFFFFFFFF)
                 self._mem.write_u32(base + 4, 0xFFFFFFFF)
 
-            def _equip_ds3_flask(base_id: int, slot: int) -> bool:
+            def _equip_ds3_flask(
+                base_id: int, slot: int, quantity: int | None = None
+            ) -> bool:
                 group_num = FlaskGroups.get_group_for_item(int(base_id))
                 if group_num is None:
                     return False
@@ -1181,7 +1193,9 @@ class EquipApplyService:
                 # Try exact match first to avoid duplicate _give_item
                 idx = _get_item_idx(full_id)
                 if idx is None:
-                    idx = _give_item(full_id, quantity=1)
+                    idx = _give_item(
+                        full_id, quantity=quantity if quantity is not None else 1
+                    )
                     # _give_item may auto-equip to an empty quick slot; clear it
                     if idx is not None:
                         for s in range(22, 32):
@@ -1190,6 +1204,9 @@ class EquipApplyService:
                             sid = _get_slot_base_id(s)
                             if sid is not None and sid == base_id:
                                 _equip_slot(s, -1)
+                elif quantity is not None and not is_only_one.get(base_id, True):
+                    _delete_ds3_item(idx)
+                    idx = _give_item(full_id, quantity=quantity)
                 if idx is not None:
                     _equip_slot(slot, idx)
                     # Delete any old flasks from the same group that are no longer equipped
@@ -1218,7 +1235,9 @@ class EquipApplyService:
                     return True
                 return False
 
-            def _equip_any_item(item_id: int, slot: int, quantity: int = 99) -> bool:
+            def _equip_any_item(
+                item_id: int, slot: int, quantity: int | None = None
+            ) -> bool:
                 if item_id in (-1, 0x0FFFFFFF, 0xFFFFFFFF, 268435455):
                     _equip_slot(slot, -1)
                     return True
@@ -1233,25 +1252,45 @@ class EquipApplyService:
                     base_id = item_id & 0x0FFFFFFF
                     # Route DS3 flasks through group handler to unequip first
                     if FlaskGroups.get_group_for_item(int(base_id)) is not None:
-                        return _equip_ds3_flask(int(base_id), slot)
+                        return _equip_ds3_flask(int(base_id), slot, quantity=quantity)
                     full = GOODS | base_id
                 else:
                     full = item_id & 0xFFFFFFFF
 
                 idx = _get_item_idx(full)
-                if idx is None:
-                    # For weapons, extract upgrade level from ID
-                    upgrade_val = 0
-                    final_full = full
-                    if 0 <= slot <= 11:  # Weapons
-                        upgrade_val = full % 10
-                        final_full = full - upgrade_val
+                # For weapons, extract upgrade level from ID
+                upgrade_val = 0
+                final_full = full
+                if 0 <= slot <= 11:  # Weapons / Arrows / Bolts
+                    upgrade_val = full % 10
+                    final_full = full - upgrade_val
 
+                if idx is None:
                     idx = _give_item(
                         final_full,
-                        quantity=quantity if (22 <= slot <= 38) else 1,
+                        quantity=(
+                            quantity
+                            if (
+                                quantity is not None
+                                and (6 <= slot <= 11 or 22 <= slot <= 38)
+                            )
+                            else (1 if slot <= 5 else 99)
+                        ),
                         upgrade_level=upgrade_val,
                     )
+                elif quantity is not None and (6 <= slot <= 11 or 22 <= slot <= 38):
+                    base_id_check = item_id & 0x0FFFFFFF
+                    # Arrows/bolts (6-11) are WEAPON type — no isOnlyOne check
+                    # Quick/toolbelt (22-38) are GOODS type — check isOnlyOne
+                    can_update = (
+                        6 <= slot <= 11
+                        or not is_only_one.get(base_id_check, True)
+                    )
+                    if can_update:
+                        _delete_ds3_item(idx)
+                        idx = _give_item(
+                            final_full, quantity=quantity, upgrade_level=upgrade_val
+                        )
                 if idx is None:
                     # Non-fatal for quick/toolbelt
                     if 22 <= slot <= 38:
@@ -1259,7 +1298,9 @@ class EquipApplyService:
                             FlaskGroups.get_group_for_item(int(item_id & 0x0FFFFFFF))
                             is not None
                         ):
-                            return _equip_ds3_flask(int(item_id & 0x0FFFFFFF), slot)
+                            return _equip_ds3_flask(
+                                int(item_id & 0x0FFFFFFF), slot, quantity=quantity
+                            )
                         return False
                     raise PhantomError(f"Failed to get/add item {full:08X}")
                 _equip_slot(slot, idx)
@@ -1282,7 +1323,8 @@ class EquipApplyService:
                 if key not in equipment:
                     continue
                 try:
-                    cur = norm(equipment[key])
+                    val = equipment[key]
+                    cur = norm(val)
                     if key.startswith(("quick_item_", "toolbelt_")) and cur in (
                         -1,
                         0x0FFFFFFF,
@@ -1290,7 +1332,10 @@ class EquipApplyService:
                         268435455,
                     ):
                         continue
-                    ok = _equip_any_item(cur, slot)
+                    qty = None
+                    if isinstance(val, dict) and "count" in val:
+                        qty = int(val["count"])
+                    ok = _equip_any_item(cur, slot, quantity=qty)
                     if not ok and (key.startswith(("quick_item_", "toolbelt_"))):
                         want = cur & 0x0FFFFFFF
                         warnings[key] = (

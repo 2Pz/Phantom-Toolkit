@@ -52,7 +52,25 @@ class ItemRow:
     icon_id: str | None = None
     max_upgrade: int = 0
     category: str | None = None
+    is_only_one: bool = False
     raw: dict[str, Any] | None = None
+
+
+def load_is_only_one_map(game_key: str) -> dict[int, bool]:
+    """Load isOnlyOne column from EquipParamGoods.csv for a game.
+
+    Returns a dict mapping item base ID -> is_only_one flag.
+    Items not in the CSV (weapons, armor, etc.) default to is_only_one=True.
+    """
+    try:
+        svc = ItemAssetService(game_key=game_key)
+        csv_path = svc.items_dir() / "EquipParamGoods.csv"
+        if csv_path.exists():
+            table = _load_csv(csv_path, "en", game_key)
+            return {item_id: row.is_only_one for item_id, row in table.items()}
+    except Exception:
+        pass
+    return {}
 
 
 def group_weapon_variants(items: list[dict]) -> list[dict]:
@@ -470,6 +488,8 @@ def _load_csv(path: Path, language: str, game: str) -> dict[int, ItemRow]:
             elif upgrade_type in ("Twinkling Titanite", "Titanite Scale"):
                 max_upgrade = 5
 
+            is_only_one = row.get("isOnlyOne", "0").strip('" ') == "1"
+
             out[item_id] = ItemRow(
                 id=item_id,
                 name=str(name),
@@ -477,6 +497,7 @@ def _load_csv(path: Path, language: str, game: str) -> dict[int, ItemRow]:
                 icon_id=str(icon_id) if icon_id else None,
                 max_upgrade=max_upgrade,
                 category=category,
+                is_only_one=is_only_one,
                 raw=row,
             )
         return out

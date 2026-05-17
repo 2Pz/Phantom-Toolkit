@@ -34,6 +34,7 @@ export interface Item {
   baseId?: string;
   baseName?: string;
   variants?: { id: number; name: string }[];
+  is_only_one?: boolean;
 }
 
 export interface BackendItem {
@@ -47,6 +48,7 @@ export interface BackendItem {
   base_id?: number;
   base_name?: string;
   variants?: { id: number; name: string }[] | null;
+  is_only_one?: boolean;
 }
 
 export interface AppConfig {

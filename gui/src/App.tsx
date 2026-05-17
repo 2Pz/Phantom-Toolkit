@@ -1125,7 +1125,7 @@ const App: React.FC = () => {
                             }
                           }}
                         />
-                        {selectedSlot && (selectedSlot.startsWith('quick') || selectedSlot.startsWith('ammo')) && (
+                        {selectedSlot && (selectedSlot.startsWith('quick') || selectedSlot.startsWith('ammo')) && !configItem.is_only_one && (
                           <div className="p-4 bg-black/60 border border-[#bfa571]/30 rounded mt-4 backdrop-blur-sm">
                             <h3 className="text-lg font-bold text-[#bfa571] mb-2 font-serif">Configure Quantity</h3>
                             <div className="flex justify-between mb-1">
