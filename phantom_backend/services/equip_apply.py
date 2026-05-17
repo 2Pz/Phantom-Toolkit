@@ -1204,9 +1204,13 @@ class EquipApplyService:
                             flagged = raw & 0xFFFFFFFF
                             tb = (flagged >> 28) & 0xF
                             base = flagged & 0x0FFFFFFF
-                            if tb == 0x4 and base in group_items and si != idx and not any(
-                                _get_slot_base_id(s) == base
-                                for s in range(22, 32)
+                            if (
+                                tb == 0x4
+                                and base in group_items
+                                and si != idx
+                                and not any(
+                                    _get_slot_base_id(s) == base for s in range(22, 32)
+                                )
                             ):
                                 _delete_ds3_item(si)
                         except Exception:
