@@ -230,6 +230,33 @@ export async function enrichWeapon(game: GameType, itemId: number): Promise<Item
     }
 }
 
+export async function enrichGoods(game: GameType, itemId: number): Promise<Item | null> {
+    try {
+        const gameKey = toBackendGame(game);
+        const res = await fetch(`${API_BASE}/${gameKey}/items/enrich-goods?id=${itemId}&lang=en`);
+        if (!res.ok) return null;
+        const data = await res.json();
+        if (!data.item) return null;
+        const d = data.item as BackendItem;
+        return {
+            id: d.id.toString(),
+            name: d.name,
+            image: (d.icon_id && Number(d.icon_id) !== 0) ? `${API_BASE}/${gameKey}/icons/${d.icon_id}` : '',
+            type: SlotType.QUICK_ITEM,
+            description: '',
+            weight: 0,
+            maxUpgrade: d.max_upgrade,
+            category: d.category,
+            baseId: d.base_id?.toString(),
+            baseName: d.base_name,
+            variants: d.variants || undefined,
+        };
+    } catch (e) {
+        console.error("Failed to enrich goods", e);
+        return null;
+    }
+}
+
 export async function getSlotCategories(game: GameType, slotKey: string): Promise<string[]> {
     try {
         const gameKey = toBackendGame(game);

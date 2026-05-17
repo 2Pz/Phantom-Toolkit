@@ -6,9 +6,10 @@ import { getSlotInfo } from './constants';
 import EquipmentGrid from './components/EquipmentGrid';
 import { AlertModal } from './components/Modal';
 import BackupTab from './components/BackupTab';
-import { detectGame, getPlayers, getRecentPlayers, quitToMenu, fixInfiniteLoading, toggleFogWall, writeStats, toggleCheat as apiToggleCheat, searchItems, enrichWeapon, writeBuild, inspectBuild, mapBackendToFrontendSlots, convertBuildToSaveFormat, saveBuild, browseSaveFile, getConfig, getMetadata, openUrl, updateConfig, getSlotCategories } from './api';
+import { detectGame, getPlayers, getRecentPlayers, quitToMenu, fixInfiniteLoading, toggleFogWall, writeStats, toggleCheat as apiToggleCheat, searchItems, enrichWeapon, enrichGoods, writeBuild, inspectBuild, mapBackendToFrontendSlots, convertBuildToSaveFormat, saveBuild, browseSaveFile, getConfig, getMetadata, openUrl, updateConfig, getSlotCategories } from './api';
 import type { AppMetadata } from './api';
 import WeaponConfig from './components/WeaponConfig';
+import SpiritSummonConfig from './components/SpiritSummonConfig';
 import { LanguageSelector } from './components/LanguageSelector';
 
 const ER_ATTRIBUTES = ['Vigor', 'Mind', 'Endurance', 'Strength', 'Dexterity', 'Intelligence', 'Faith', 'Arcane'];
@@ -933,6 +934,33 @@ const App: React.FC = () => {
         }
       } catch { /* ignore stale/errored enrichments */ }
     }
+
+    // Enrich spirit summons with variant data
+    const isSpiritSummon = slotItem?.category?.toLowerCase().includes('spirit summon');
+    if (slotItem && isSpiritSummon && !slotItem.variants) {
+      try {
+        const enriched = await enrichGoods(selectedGame, parseInt(slotItem.id));
+        if (enrichSlotRef.current !== slotId) return;
+        if (enriched) {
+          const merged: Item = {
+            ...enriched,
+            id: slotItem.id,
+            name: slotItem.name,
+            count: slotItem.count,
+          };
+          setLocalBuild(prev => ({
+            ...prev,
+            slots: { ...prev.slots, [slotId]: merged }
+          }));
+          if (enriched.category && enrichSlotRef.current === slotId) {
+            setSelectedCategory(enriched.category);
+          }
+          if (enrichSlotRef.current === slotId) {
+            setPendingItem(merged);
+          }
+        }
+      } catch { /* ignore stale/errored enrichments */ }
+    }
   };
 
   const handleConfirmEquip = () => {
@@ -1112,19 +1140,34 @@ const App: React.FC = () => {
                     {/* Pending Config Logic */}
                     {pendingItem ? (
                       <>
-                        <WeaponConfig
-                          game={selectedGame}
-                          item={configItem}
-                          onUpdate={(updated) => {
-                            setPendingItem(updated);
-                            if (selectedSlot) {
-                              setLocalBuild(prev => ({
-                                ...prev,
-                                slots: { ...prev.slots, [selectedSlot]: updated }
-                              }));
-                            }
-                          }}
-                        />
+                        {configItem.category?.toLowerCase().includes('spirit summon') ? (
+                          <SpiritSummonConfig
+                            item={configItem}
+                            onUpdate={(updated) => {
+                              setPendingItem(updated);
+                              if (selectedSlot) {
+                                setLocalBuild(prev => ({
+                                  ...prev,
+                                  slots: { ...prev.slots, [selectedSlot]: updated }
+                                }));
+                              }
+                            }}
+                          />
+                        ) : (
+                          <WeaponConfig
+                            game={selectedGame}
+                            item={configItem}
+                            onUpdate={(updated) => {
+                              setPendingItem(updated);
+                              if (selectedSlot) {
+                                setLocalBuild(prev => ({
+                                  ...prev,
+                                  slots: { ...prev.slots, [selectedSlot]: updated }
+                                }));
+                              }
+                            }}
+                          />
+                        )}
                         {selectedSlot && (selectedSlot.startsWith('quick') || selectedSlot.startsWith('ammo')) && !configItem.is_only_one && (() => {
                           const maxQty = configItem.max_num ?? 99;
                           return (

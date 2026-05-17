@@ -117,6 +117,49 @@ def group_weapon_variants(items: list[dict]) -> list[dict]:
     return result
 
 
+SPIRIT_SUMMON_CATEGORIES = frozenset(
+    {"Spirit Summon - Lesser", "Spirit Summon - Greater"}
+)
+
+
+def group_spirit_summons(items: list[dict]) -> list[dict]:
+    """Group spirit summon goods by base ID (id - id % 1000), returning base entries with variant lists.
+
+    Spirit summons have upgrade levels +0..+10 at id = base + level.
+    Groups by base_id = id - (id % 1000). Non-spirit items pass through unmodified.
+    """
+    spirit_items = [i for i in items if i.get("category") in SPIRIT_SUMMON_CATEGORIES]
+    other_items = [
+        i for i in items if i.get("category") not in SPIRIT_SUMMON_CATEGORIES
+    ]
+
+    groups: dict[int, list[dict]] = {}
+    for item in spirit_items:
+        base_id = item["id"] - (item["id"] % 1000)
+        groups.setdefault(base_id, []).append(item)
+
+    result = list(other_items)
+    for group in groups.values():
+        if len(group) == 1:
+            result.append({**group[0], "variants": None})
+        else:
+            base = next((i for i in group if i["id"] % 1000 == 0), group[0])
+            variants = [
+                {"id": i["id"], "name": i["name"]}
+                for i in group
+                if i["id"] != base["id"]
+            ]
+            result.append(
+                {
+                    **base,
+                    "base_id": base["id"],
+                    "base_name": base["name"],
+                    "variants": variants,
+                }
+            )
+    return result
+
+
 # Maps internal game keys to physical directory names in the items/ folder.
 _GAME_DIR_MAP: dict[str, list[str]] = {
     "eldenring": ["ER", "eldenring", "EldenRing"],
@@ -303,6 +346,25 @@ class ItemAssetService:
         items_dict = [row.__dict__ for row in matching]
         grouped = group_weapon_variants(items_dict)
         return grouped[0] if grouped else None
+
+    def enrich_goods(self, item_id: int, language: str | None = None) -> dict | None:
+        """Given any goods ID, return grouped entry with variants for spirit summons.
+
+        For spirit summons, groups by id - (id % 1000). Non-spirit goods return as-is.
+        """
+        table = self._load_csv("EquipParamGoods.csv", language)
+        base_id = item_id - (item_id % 1000)
+        matching = [
+            row for row in table.values() if row.id - (row.id % 1000) == base_id
+        ]
+        if not matching:
+            return None
+        items_dict = [row.__dict__ for row in matching]
+        grouped = group_spirit_summons(items_dict)
+        # If it's not a spirit summon, return as single item
+        if grouped:
+            return grouped[0]
+        return items_dict[0]
 
     def search_items(
         self,

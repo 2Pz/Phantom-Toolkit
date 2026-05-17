@@ -7,7 +7,12 @@ from fastapi.responses import Response
 from pydantic import BaseModel
 
 from phantom_backend.services.item_catalog import lookup as catalog_lookup
-from phantom_backend.services.items import ItemAssetService, group_weapon_variants
+from phantom_backend.services.items import (
+    SPIRIT_SUMMON_CATEGORIES,
+    ItemAssetService,
+    group_spirit_summons,
+    group_weapon_variants,
+)
 
 router = APIRouter(prefix="/{game}", tags=["items"])
 
@@ -58,15 +63,28 @@ def search_items(  # noqa: PLR0913
                 elif allowed_cats is not None:
                     category = allowed_cats
 
-    # For weapons, request more raw items so variant grouping yields meaningful results.
-    # Each base weapon can have ~13 affinity rows, so multiply the limit to account for them.
-    internal_limit = max(limit, limit * 20) if csv == "EquipParamWeapon.csv" else limit
+    # For weapons or spirit summons, request more raw items so variant grouping yields meaningful results.
+    # Each base weapon can have ~13 affinity rows, each spirit summon has up to 11 levels.
+    is_spirit_summon_search = (
+        csv == "EquipParamGoods.csv"
+        and category
+        and any(c in SPIRIT_SUMMON_CATEGORIES for c in category)
+    )
+    internal_limit = (
+        max(limit, limit * 20)
+        if (csv == "EquipParamWeapon.csv" or is_spirit_summon_search)
+        else limit
+    )
     hits = svc.search_items(
         csv_name=csv, q=q, categories=category, language=lang, limit=internal_limit
     )
     items = [h.__dict__ for h in hits]
     if csv == "EquipParamWeapon.csv":
         items = group_weapon_variants(items)
+    elif csv == "EquipParamGoods.csv" and any(
+        i.get("category") in SPIRIT_SUMMON_CATEGORIES for i in items
+    ):
+        items = group_spirit_summons(items)
     return {"items": items[:limit]}
 
 
@@ -82,6 +100,14 @@ def enrich_weapon(game: str, id: int, lang: str | None = None):
     """Given any weapon variant ID, return the grouped entry with all variants/baseId/baseName."""
     svc = ItemAssetService(game_key=game)
     item = svc.enrich_weapon(id, lang)
+    return {"item": item}
+
+
+@router.get("/items/enrich-goods")
+def enrich_goods(game: str, id: int, lang: str | None = None):
+    """Given any goods ID, return the grouped entry with variants for spirit summons."""
+    svc = ItemAssetService(game_key=game)
+    item = svc.enrich_goods(id, lang)
     return {"item": item}
 
 
