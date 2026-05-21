@@ -165,6 +165,7 @@ export async function searchItems(
     slotKey?: string,
     category?: string,
     limit?: number,
+    equipOnly?: boolean,
 ): Promise<Item[]> {
     try {
         const gameKey = toBackendGame(game);
@@ -174,6 +175,7 @@ export async function searchItems(
         if (slotKey) params.set('slot', slotKey);
         if (category) params.set('category', category);
         if (limit) params.set('limit', limit.toString());
+        if (equipOnly) params.set('equip_only', 'true');
 
         const url = `${API_BASE}/${gameKey}/items/search?${params.toString()}`;
 
@@ -257,10 +259,14 @@ export async function enrichGoods(game: GameType, itemId: number): Promise<Item 
     }
 }
 
-export async function getSlotCategories(game: GameType, slotKey: string): Promise<string[]> {
+export async function getSlotCategories(game: GameType, slotKey: string, equipOnly?: boolean): Promise<string[]> {
     try {
         const gameKey = toBackendGame(game);
-        const res = await fetch(`${API_BASE}/${gameKey}/items/slot-categories?slot=${slotKey}`);
+        let url = `${API_BASE}/${gameKey}/items/slot-categories?slot=${slotKey}`;
+        if (equipOnly) {
+            url += '&equip_only=true';
+        }
+        const res = await fetch(url);
         if (!res.ok) return [];
         const data = await res.json();
         return data.categories || [];

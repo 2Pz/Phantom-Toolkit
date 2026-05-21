@@ -53,6 +53,7 @@ class ItemRow:
     max_upgrade: int = 0
     category: str | None = None
     is_only_one: bool = False
+    is_equip: bool = False
     max_num: int | None = None
     raw: dict[str, Any] | None = None
 
@@ -366,7 +367,7 @@ class ItemAssetService:
             return grouped[0]
         return items_dict[0]
 
-    def search_items(
+    def search_items(  # noqa: PLR0913
         self,
         *,
         csv_name: str | None = None,
@@ -374,6 +375,7 @@ class ItemAssetService:
         categories: list[str] | None = None,
         language: str | None = None,
         limit: int = 50,
+        equip_only: bool = False,
     ) -> list[ItemRow]:
         """Search items.
 
@@ -392,6 +394,22 @@ class ItemAssetService:
             for item in table.values():
                 if categories and item.category not in categories:
                     continue
+                if equip_only:
+                    # Remove unequipable categories
+                    if not item.category or item.category in (
+                        "Key Item",
+                        "Info Item",
+                        "Reinforcement Material",
+                        "Regenerative Material",
+                        "Crafting Material",
+                    ):
+                        continue
+                    # Remove items where is_equip is False, specifically in "Normal Item" and "Consumable"
+                    if not item.is_equip and item.category in (
+                        "Normal Item",
+                        "Consumable",
+                    ):
+                        continue
                 if qn and qn not in item.normalized_name and qn not in str(item.id):
                     continue
                 hits.append(item)
@@ -562,6 +580,7 @@ def _load_csv(path: Path, language: str, game: str) -> dict[int, ItemRow]:
                 max_upgrade = 5
 
             is_only_one = row.get("isOnlyOne", "0").replace('"', "").strip() == "1"
+            is_equip = row.get("isEquip", "0").replace('"', "").strip() == "1"
             raw_max = row.get("maxNum")
             max_num = (
                 int(raw_max.replace('"', "").strip()) if raw_max is not None else None
@@ -575,6 +594,7 @@ def _load_csv(path: Path, language: str, game: str) -> dict[int, ItemRow]:
                 max_upgrade=max_upgrade,
                 category=category,
                 is_only_one=is_only_one,
+                is_equip=is_equip,
                 max_num=max_num,
                 raw=row,
             )

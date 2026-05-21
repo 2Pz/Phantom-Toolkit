@@ -24,7 +24,7 @@ def list_csvs(game: str):
 
 
 @router.get("/items/slot-categories")
-def get_slot_categories(game: str, slot: str):
+def get_slot_categories(game: str, slot: str, equip_only: bool = False):
     svc = ItemAssetService(game_key=game)
     resolved = catalog_lookup(game, slot)
     if not resolved:
@@ -37,6 +37,19 @@ def get_slot_categories(game: str, slot: str):
             cats = list(svc.get_distinct_categories(csv_name, cat_col))
     else:
         cats = allowed_cats
+
+    if equip_only:
+        excluded = {
+            "Key Item",
+            "Info Item",
+            "Reinforcement Material",
+            "Regenerative Material",
+            "Crafting Material",
+            "None",
+            "",
+        }
+        cats = [c for c in cats if str(c) not in excluded and c is not None]
+
     return {"categories": cats}
 
 
@@ -49,6 +62,7 @@ def search_items(  # noqa: PLR0913
     category: list[str] = Query(None),
     lang: str | None = None,
     limit: int = 50,
+    equip_only: bool = False,
 ):
     svc = ItemAssetService(game_key=game)
 
@@ -76,7 +90,12 @@ def search_items(  # noqa: PLR0913
         else limit
     )
     hits = svc.search_items(
-        csv_name=csv, q=q, categories=category, language=lang, limit=internal_limit
+        csv_name=csv,
+        q=q,
+        categories=category,
+        language=lang,
+        limit=internal_limit,
+        equip_only=equip_only,
     )
     items = [h.__dict__ for h in hits]
     if csv == "EquipParamWeapon.csv":

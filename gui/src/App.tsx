@@ -561,6 +561,7 @@ const App: React.FC = () => {
         slotInfo.slotKey,
         selectedCategory || undefined,
         limit,
+        true // equipOnly
       );
       setSearchResults(results);
       setIsSearching(false);
@@ -583,7 +584,7 @@ const App: React.FC = () => {
       setSelectedCategory('');
       return;
     }
-    getSlotCategories(selectedGame, slotInfo.slotKey).then(cats => {
+    getSlotCategories(selectedGame, slotInfo.slotKey, true).then(cats => {
       setAvailableCategories(cats);
       // Keep current category filter if still valid for this slot
       setSelectedCategory(prev => (prev && !cats.includes(prev)) ? '' : prev);

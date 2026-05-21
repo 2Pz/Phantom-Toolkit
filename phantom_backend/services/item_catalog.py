@@ -49,7 +49,6 @@ SLOT_DEFINITIONS: dict[str, dict[str, tuple[str, str, list[str] | None]]] = {
             [
                 "Normal Item",
                 "Key Item",
-                "Consumable",
                 "Crafting Material",
                 "Regenerative Material",
                 "Reinforcement Material",
@@ -66,7 +65,6 @@ SLOT_DEFINITIONS: dict[str, dict[str, tuple[str, str, list[str] | None]]] = {
             [
                 "Normal Item",
                 "Key Item",
-                "Consumable",
                 "Crafting Material",
                 "Regenerative Material",
                 "Reinforcement Material",
