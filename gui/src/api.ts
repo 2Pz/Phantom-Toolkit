@@ -6,6 +6,7 @@ const API_BASE = import.meta.env.PROD ? '' : 'http://127.0.0.1:8000';
 type BuildEquipmentEntry = number | { id: number; ash_of_war?: number; count?: number };
 const EMPTY_EQUIP_ID = -1; // backend interprets -1/0xFFFFFFFF/0x0FFFFFFF as "unequip"
 const DEFAULT_AMMO_COUNT = 99;
+const DEFAULT_QUICK_ITEM_COUNT = 1; // fallback if max_num isn't available
 
 function buildFrontendToBackendSlotMapping(game: GameType): Record<string, string> {
     const slotMapping: Record<string, string> = {
@@ -853,7 +854,7 @@ export function convertBuildToSaveFormat(game: GameType, slots: Record<string, I
             // - Include `ash_of_war` metadata for weapons when present
             const finalCount = feKey.startsWith('ammo')
                 ? (item.count ?? DEFAULT_AMMO_COUNT)
-                : (feKey.startsWith('quick') ? item.count : undefined);
+                : (feKey.startsWith('quick') ? (item.count ?? item.max_num ?? DEFAULT_QUICK_ITEM_COUNT) : undefined);
 
             if ((isWeaponBackendSlot(beKey) && item.gemId) || finalCount !== undefined) {
                 equipment[beKey] = {
