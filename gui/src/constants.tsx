@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Item, GameType } from './types';
+import { GameType, SlotType } from './types';
 
 export const SLOT_ICONS: Record<string, React.ReactNode> = {
   WEAPON_R: (
@@ -109,41 +109,83 @@ export const SLOT_ICONS: Record<string, React.ReactNode> = {
       <path d="M50,15 C50,15 30,40 30,65 C30,85 40,90 50,90 C60,90 70,85 70,65 C70,40 50,15 50,15 Z" />
       <circle cx="50" cy="65" r="10" fill="black" opacity="0.3" />
     </svg>
+  ),
+  GREAT_RUNE: (
+    <svg className="w-12 h-12 opacity-25" viewBox="0 0 100 100" fill="currentColor">
+      {/* Elden Ring Great Rune silhouette */}
+      <circle cx="50" cy="50" r="28" fill="none" stroke="currentColor" strokeWidth="3" />
+      <circle cx="50" cy="50" r="10" fill="none" stroke="currentColor" strokeWidth="2" />
+      <path d="M50,22 L50,10 M50,78 L50,90 M22,50 L10,50 M78,50 L90,50" stroke="currentColor" strokeWidth="2.5" />
+      <path d="M30,30 L22,22 M70,30 L78,22 M30,70 L22,78 M70,70 L78,78" stroke="currentColor" strokeWidth="2" />
+      <circle cx="50" cy="50" r="4" fill="currentColor" opacity="0.5" />
+    </svg>
   )
 };
 
-export const SLOT_CSV_MAPPING: Record<GameType, Record<string, string>> = {
+interface SlotInfo {
+  csv: string;
+  slotKey: string;
+  slotType: SlotType;
+}
+
+export const SLOT_CSV_MAPPING: Record<GameType, Record<string, SlotInfo>> = {
   ELDEN_RING: {
-    WEAPON_R: 'Weapons.csv',
-    WEAPON_L: 'Weapons.csv',
-    AMMO_ARROW: 'Ammunitions.csv',
-    AMMO_BOLT: 'Ammunitions.csv',
-    ARMOR_HEAD: 'Heads.csv',
-    ARMOR_CHEST: 'Chests.csv',
-    ARMOR_HANDS: 'Gauntlets.csv',
-    ARMOR_LEGS: 'Leggings.csv',
-    TALISMAN: 'Talismans.csv',
-    QUICK_ITEM: 'QuickItems.csv',
-    SPELL: 'Spells.csv',
-    RING: 'Talismans.csv',
-    COVENANT: 'Talismans.csv', // Fallback
-    PHYSICK: 'PhysickTears.csv'
+    WEAPON_R:   { csv: 'EquipParamWeapon.csv', slotKey: 'weapon', slotType: SlotType.WEAPON_R },
+    WEAPON_L:   { csv: 'EquipParamWeapon.csv', slotKey: 'weapon', slotType: SlotType.WEAPON_L },
+    AMMO_ARROW: { csv: 'EquipParamWeapon.csv', slotKey: 'arrow', slotType: SlotType.AMMO_ARROW },
+    AMMO_BOLT:  { csv: 'EquipParamWeapon.csv', slotKey: 'bolt', slotType: SlotType.AMMO_BOLT },
+    ARMOR_HEAD: { csv: 'EquipParamProtector.csv', slotKey: 'helmet', slotType: SlotType.ARMOR_HEAD },
+    ARMOR_CHEST:{ csv: 'EquipParamProtector.csv', slotKey: 'armor', slotType: SlotType.ARMOR_CHEST },
+    ARMOR_HANDS:{ csv: 'EquipParamProtector.csv', slotKey: 'gauntlet', slotType: SlotType.ARMOR_HANDS },
+    ARMOR_LEGS: { csv: 'EquipParamProtector.csv', slotKey: 'leggings', slotType: SlotType.ARMOR_LEGS },
+    TALISMAN:   { csv: 'EquipParamAccessory.csv', slotKey: 'talisman', slotType: SlotType.TALISMAN },
+    RING:       { csv: 'EquipParamAccessory.csv', slotKey: 'ring', slotType: SlotType.RING },
+    COVENANT:   { csv: 'EquipParamAccessory.csv', slotKey: 'covenant', slotType: SlotType.COVENANT },
+    QUICK_ITEM: { csv: 'EquipParamGoods.csv', slotKey: 'quick', slotType: SlotType.QUICK_ITEM },
+    SPELL:      { csv: 'EquipParamGoods.csv', slotKey: 'spell', slotType: SlotType.SPELL },
+    PHYSICK:    { csv: 'EquipParamGoods.csv', slotKey: 'physick', slotType: SlotType.PHYSICK },
+    GREAT_RUNE: { csv: 'EquipParamGoods.csv', slotKey: 'great_rune', slotType: SlotType.GREAT_RUNE },
   },
   DARK_SOULS_3: {
-    WEAPON_R: 'Weapons.csv',
-    WEAPON_L: 'Weapons.csv',
-    AMMO_ARROW: 'Ammunitions.csv',
-    AMMO_BOLT: 'Ammunitions.csv',
-    ARMOR_HEAD: 'Heads.csv',
-    ARMOR_CHEST: 'Chests.csv',
-    ARMOR_HANDS: 'Gauntlets.csv',
-    ARMOR_LEGS: 'Leggings.csv',
-    RING: 'Rings.csv',
-    TALISMAN: 'Rings.csv',
-    QUICK_ITEM: 'QuickItems.csv',
-    SPELL: 'Spells.csv',
-    COVENANT: 'Covenants.csv'
-  }
+    WEAPON_R:   { csv: 'EquipParamWeapon.csv', slotKey: 'weapon', slotType: SlotType.WEAPON_R },
+    WEAPON_L:   { csv: 'EquipParamWeapon.csv', slotKey: 'weapon', slotType: SlotType.WEAPON_L },
+    AMMO_ARROW: { csv: 'EquipParamWeapon.csv', slotKey: 'arrow', slotType: SlotType.AMMO_ARROW },
+    AMMO_BOLT:  { csv: 'EquipParamWeapon.csv', slotKey: 'bolt', slotType: SlotType.AMMO_BOLT },
+    ARMOR_HEAD: { csv: 'EquipParamProtector.csv', slotKey: 'helmet', slotType: SlotType.ARMOR_HEAD },
+    ARMOR_CHEST:{ csv: 'EquipParamProtector.csv', slotKey: 'armor', slotType: SlotType.ARMOR_CHEST },
+    ARMOR_HANDS:{ csv: 'EquipParamProtector.csv', slotKey: 'gauntlet', slotType: SlotType.ARMOR_HANDS },
+    ARMOR_LEGS: { csv: 'EquipParamProtector.csv', slotKey: 'leggings', slotType: SlotType.ARMOR_LEGS },
+    RING:       { csv: 'EquipParamAccessory.csv', slotKey: 'ring', slotType: SlotType.RING },
+    TALISMAN:   { csv: 'EquipParamAccessory.csv', slotKey: 'ring', slotType: SlotType.TALISMAN },
+    COVENANT:   { csv: 'EquipParamAccessory.csv', slotKey: 'covenant', slotType: SlotType.COVENANT },
+    QUICK_ITEM: { csv: 'EquipParamGoods.csv', slotKey: 'quick', slotType: SlotType.QUICK_ITEM },
+    SPELL:      { csv: 'EquipParamGoods.csv', slotKey: 'spell', slotType: SlotType.SPELL },
+  },
 };
+
+export function getSlotInfo(game: GameType, slotId: string): SlotInfo | undefined {
+  const mapping = SLOT_CSV_MAPPING[game];
+  if (!mapping) return undefined;
+
+  const s = slotId.toLowerCase();
+
+  if (s.startsWith('weapon_r')) return mapping.WEAPON_R;
+  if (s.startsWith('weapon_l')) return mapping.WEAPON_L;
+  if (s.startsWith('ammo_arrow') || s.startsWith('ammo_1')) return mapping.AMMO_ARROW;
+  if (s.startsWith('ammo_bolt') || s.startsWith('ammo_2')) return mapping.AMMO_BOLT;
+  if (s === 'head')   return mapping.ARMOR_HEAD;
+  if (s === 'chest')  return mapping.ARMOR_CHEST;
+  if (s === 'hands')  return mapping.ARMOR_HANDS;
+  if (s === 'legs')   return mapping.ARMOR_LEGS;
+  if (s.startsWith('ring'))     return mapping.RING;
+  if (s.startsWith('talisman')) return mapping.TALISMAN;
+  if (s === 'covenant')         return mapping.COVENANT;
+  if (s.startsWith('quick'))    return mapping.QUICK_ITEM;
+  if (s.startsWith('spell'))    return mapping.SPELL;
+  if (s.startsWith('physick'))  return mapping.PHYSICK;
+  if (s.startsWith('great_rune')) return mapping.GREAT_RUNE;
+
+  return undefined;
+}
 
 

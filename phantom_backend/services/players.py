@@ -251,7 +251,14 @@ class PlayerService:
                         int(p2 & 0x0FFFFFFF) if p2 != 0xFFFFFFFF else -1
                     )
                 except Exception:
-                    # Silently fail for optional Physick read
+                    pass
+
+                # Great Rune slot (PlayerGameData + 0x5C0)
+                try:
+                    gr_addr = player_data + 0x5C0
+                    gr = self._mem.read_u32(gr_addr)
+                    st.equipment["great_rune"] = int(gr & 0x0FFFFFFF) if gr != 0 else -1
+                except Exception:
                     pass
 
                 qio = cfg.get("equipment", {}).get("quick_item_offsets", {})

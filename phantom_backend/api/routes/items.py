@@ -2,11 +2,17 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 from fastapi.responses import Response
 from pydantic import BaseModel
 
-from phantom_backend.services.items import ItemAssetService
+from phantom_backend.services.item_catalog import lookup as catalog_lookup
+from phantom_backend.services.items import (
+    SPIRIT_SUMMON_CATEGORIES,
+    ItemAssetService,
+    group_spirit_summons,
+    group_weapon_variants,
+)
 
 router = APIRouter(prefix="/{game}", tags=["items"])
 
@@ -17,13 +23,88 @@ def list_csvs(game: str):
     return {"csvs": svc.list_csv_files()}
 
 
+@router.get("/items/slot-categories")
+def get_slot_categories(game: str, slot: str, equip_only: bool = False):
+    svc = ItemAssetService(game_key=game)
+    resolved = catalog_lookup(game, slot)
+    if not resolved:
+        return {"categories": []}
+    csv_name, cat_col, allowed_cats = resolved
+    if allowed_cats is None:
+        if csv_name == "EquipParamWeapon.csv":
+            cats = svc.get_distinct_weapon_categories()
+        else:
+            cats = list(svc.get_distinct_categories(csv_name, cat_col))
+    else:
+        cats = allowed_cats
+
+    if equip_only:
+        excluded = {
+            "Key Item",
+            "Info Item",
+            "Reinforcement Material",
+            "Regenerative Material",
+            "Crafting Material",
+            "None",
+            "",
+        }
+        cats = [c for c in cats if str(c) not in excluded and c is not None]
+
+    return {"categories": cats}
+
+
 @router.get("/items/search")
-def search_items(
-    game: str, q: str, csv: str | None = None, lang: str | None = None, limit: int = 50
+def search_items(  # noqa: PLR0913
+    game: str,
+    q: str,
+    csv: str | None = None,
+    slot: str | None = None,
+    category: list[str] = Query(None),
+    lang: str | None = None,
+    limit: int = 50,
+    equip_only: bool = False,
 ):
     svc = ItemAssetService(game_key=game)
-    hits = svc.search_items(csv_name=csv, q=q, language=lang, limit=limit)
-    return {"items": [h.__dict__ for h in hits]}
+
+    if slot:
+        resolved = catalog_lookup(game, slot)
+        if resolved:
+            csv_name, _cat_col, allowed_cats = resolved
+            csv = csv_name
+            if not category:
+                if allowed_cats is None and csv_name == "EquipParamWeapon.csv":
+                    category = svc.get_distinct_weapon_categories()
+                elif allowed_cats is not None:
+                    category = allowed_cats
+
+    # For weapons or spirit summons, request more raw items so variant grouping yields meaningful results.
+    # Each base weapon can have ~13 affinity rows, each spirit summon has up to 11 levels.
+    is_spirit_summon_search = (
+        csv == "EquipParamGoods.csv"
+        and category
+        and any(c in SPIRIT_SUMMON_CATEGORIES for c in category)
+    )
+    internal_limit = (
+        max(limit, limit * 20)
+        if (csv == "EquipParamWeapon.csv" or is_spirit_summon_search)
+        else limit
+    )
+    hits = svc.search_items(
+        csv_name=csv,
+        q=q,
+        categories=category,
+        language=lang,
+        limit=internal_limit,
+        equip_only=equip_only,
+    )
+    items = [h.__dict__ for h in hits]
+    if csv == "EquipParamWeapon.csv":
+        items = group_weapon_variants(items)
+    elif csv == "EquipParamGoods.csv" and any(
+        i.get("category") in SPIRIT_SUMMON_CATEGORIES for i in items
+    ):
+        items = group_spirit_summons(items)
+    return {"items": items[:limit]}
 
 
 @router.get("/items/get")
@@ -31,6 +112,22 @@ def get_item(game: str, csv: str, id: int, lang: str | None = None):
     svc = ItemAssetService(game_key=game)
     item = svc.get_item(csv_name=csv, item_id=id, language=lang)
     return {"item": item.__dict__}
+
+
+@router.get("/items/enrich-weapon")
+def enrich_weapon(game: str, id: int, lang: str | None = None):
+    """Given any weapon variant ID, return the grouped entry with all variants/baseId/baseName."""
+    svc = ItemAssetService(game_key=game)
+    item = svc.enrich_weapon(id, lang)
+    return {"item": item}
+
+
+@router.get("/items/enrich-goods")
+def enrich_goods(game: str, id: int, lang: str | None = None):
+    """Given any goods ID, return the grouped entry with variants for spirit summons."""
+    svc = ItemAssetService(game_key=game)
+    item = svc.enrich_goods(id, lang)
+    return {"item": item}
 
 
 @router.get("/icons/{icon_id}")
@@ -57,23 +154,13 @@ class InspectBuildRequest(BaseModel):
     equipment: dict[str, Any]  # dict of slot -> id (int) or {id: int}
 
 
-SLOT_CSV_MAP = {
-    "helmet": ["Heads.csv"],
-    "armor": ["Chests.csv"],
-    "gauntlet": ["Gauntlets.csv"],
-    "leggings": ["Leggings.csv"],
-    "accessory": ["Talismans.csv", "Rings.csv"],
-    "talisman": ["Talismans.csv"],
-    "ring": ["Rings.csv", "Talismans.csv", "Accessories.csv"],
-    "weapon": ["Weapons.csv"],
-    "wep": ["Weapons.csv"],
-    "arrow": ["Ammunitions.csv"],
-    "bolt": ["Ammunitions.csv"],
-    "magic": ["Spells.csv"],
-    "spell": ["Spells.csv"],
-    "quick": ["QuickItems.csv"],
-    "physick": ["PhysickTears.csv"],
-}
+def _csv_hints_for_slot(game: str, slot_key: str) -> list[str] | None:
+    """Resolve slot key to CSV hints via the catalog."""
+    resolved = catalog_lookup(game, slot_key)
+    if resolved is None:
+        return None
+    csv_name, _cat_col, _cats = resolved
+    return [csv_name]
 
 
 @router.post("/items/inspect_build")
@@ -86,7 +173,6 @@ def inspect_build(game: str, req: InspectBuildRequest):
     enriched = {}
 
     for slot, val in req.equipment.items():
-        # Handle simple int ID or dict with "id"
         item_id = -1
         ash_of_war_id = -1
 
@@ -96,32 +182,27 @@ def inspect_build(game: str, req: InspectBuildRequest):
             item_id = val.get("id", -1)
             ash_of_war_id = val.get("ash_of_war", -1)
 
-        # Treat sentinel IDs as empty slots (common in saved builds).
-        # 0x0FFFFFFF is frequently used as a placeholder "empty" item id in ER/DS3 tooling.
         if item_id in (-1, 0xFFFFFFFF, 0x0FFFFFFF):
             enriched[slot] = None
             continue
 
         if item_id > -1:
-            # Determine hints
-            hints = []
-            for k, v in SLOT_CSV_MAP.items():
-                if k in slot:
-                    hints.extend(v)
-                    break
+            hints = _csv_hints_for_slot(game, slot)
 
             found = svc.find_item_any_csv(item_id, hints=hints)
             if found:
                 enriched[slot] = {
-                    "id": item_id,  # Return ORIGINAL ID
+                    "id": item_id,
                     "name": found.name,
                     "icon_id": found.icon_id,
                     "max_upgrade": found.max_upgrade,
+                    "category": found.category,
                 }
 
                 if ash_of_war_id > -1:
-                    # Gems hinted?
-                    gem_hints = ["Gems.csv", "AshOfWarsIDs.csv"]
+                    gem_hints = _csv_hints_for_slot(game, "gem") or [
+                        "EquipParamGem.csv"
+                    ]
                     gem_found = svc.find_item_any_csv(ash_of_war_id, hints=gem_hints)
                     if gem_found:
                         enriched[slot]["gem_name"] = gem_found.name

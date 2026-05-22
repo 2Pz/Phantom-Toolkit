@@ -1,43 +1,12 @@
 import { GameType, Item, PlayerData, StatusState, SlotType, BackendItem, AppConfig, BackupSettings, BackupEntry } from './types';
-
-function getTypeForCsv(csv: string): SlotType {
-    const lookup: Record<string, SlotType> = {
-        'er_weapons.csv': SlotType.WEAPON_R,
-        'er_armors.csv': SlotType.ARMOR_HEAD,
-        'er_accessories.csv': SlotType.TALISMAN,
-        'er_spells.csv': SlotType.SPELL,
-        'er_items.csv': SlotType.QUICK_ITEM,
-        'ds3_weapons.csv': SlotType.WEAPON_R,
-        'ds3_armors.csv': SlotType.ARMOR_HEAD,
-        'ds3_rings.csv': SlotType.RING,
-        'ds3_spells.csv': SlotType.SPELL,
-        'ds3_items.csv': SlotType.QUICK_ITEM,
-    };
-    return lookup[csv] || SlotType.WEAPON_R;
-}
-
-function getTypeForBackendKey(beKey: string): SlotType {
-    const key = beKey.toLowerCase();
-    if (key.includes('head') || key.includes('helmet')) return SlotType.ARMOR_HEAD;
-    if (key.includes('chest') || key.includes('armor')) return SlotType.ARMOR_CHEST;
-    if (key.includes('hand') || key.includes('gauntlet')) return SlotType.ARMOR_HANDS;
-    if (key.includes('leg') || key.includes('leggings')) return SlotType.ARMOR_LEGS;
-    if (key.includes('ring')) return SlotType.RING;
-    if (key.includes('accessory') || key.includes('talisman')) return SlotType.TALISMAN;
-    if (key.includes('arrow') || key.includes('ammo_1')) return SlotType.AMMO_ARROW;
-    if (key.includes('bolt') || key.includes('ammo_2')) return SlotType.AMMO_BOLT;
-    if (key.includes('magic') || key.includes('spell')) return SlotType.SPELL;
-    if (key.includes('quick_item') || key.includes('quick_')) return SlotType.QUICK_ITEM;
-    if (key.includes('covenant')) return SlotType.COVENANT;
-    if (key.includes('physick')) return SlotType.PHYSICK;
-    return SlotType.WEAPON_R;
-}
+import { getSlotInfo } from './constants';
 
 const API_BASE = import.meta.env.PROD ? '' : 'http://127.0.0.1:8000';
 
 type BuildEquipmentEntry = number | { id: number; ash_of_war?: number; count?: number };
 const EMPTY_EQUIP_ID = -1; // backend interprets -1/0xFFFFFFFF/0x0FFFFFFF as "unequip"
 const DEFAULT_AMMO_COUNT = 99;
+const DEFAULT_QUICK_ITEM_COUNT = 1; // fallback if max_num isn't available
 
 function buildFrontendToBackendSlotMapping(game: GameType): Record<string, string> {
     const slotMapping: Record<string, string> = {
@@ -53,6 +22,7 @@ function buildFrontendToBackendSlotMapping(game: GameType): Record<string, strin
         legs: 'leggings',
         physick_tear_1: 'physick_tear_1',
         physick_tear_2: 'physick_tear_2',
+        great_rune: 'great_rune',
     };
 
     if (game === 'DARK_SOULS_3') {
@@ -188,17 +158,27 @@ export async function toggleCheat(game: GameType, cheat: string, enable: boolean
     await fetch(`${API_BASE}/${toBackendGame(game)}/cheats/${backendName}/${action}`, { method: 'POST' });
 }
 
-export async function searchItems(game: GameType, query: string, csv?: string, limit?: number): Promise<Item[]> {
+export async function searchItems(
+    game: GameType,
+    query: string,
+    csv?: string,
+    slotType?: SlotType,
+    slotKey?: string,
+    category?: string,
+    limit?: number,
+    equipOnly?: boolean,
+): Promise<Item[]> {
     try {
         const gameKey = toBackendGame(game);
-        let url = `${API_BASE}/${gameKey}/items/search?q=${encodeURIComponent(query)}`;
-        if (csv) {
-            url += `&csv=${encodeURIComponent(csv)}`;
-        }
-        if (limit) {
-            url += `&limit=${limit}`;
-        }
-        // Language is handled by backend config default
+        const params = new URLSearchParams();
+        params.set('q', query);
+        if (csv) params.set('csv', csv);
+        if (slotKey) params.set('slot', slotKey);
+        if (category) params.set('category', category);
+        if (limit) params.set('limit', limit.toString());
+        if (equipOnly) params.set('equip_only', 'true');
+
+        const url = `${API_BASE}/${gameKey}/items/search?${params.toString()}`;
 
         const res = await fetch(url);
         if (!res.ok) return [];
@@ -209,13 +189,90 @@ export async function searchItems(game: GameType, query: string, csv?: string, l
             name: d.name,
             icon_id: d.icon_id?.toString() || '',
             image: (d.icon_id && Number(d.icon_id) !== 0) ? `${API_BASE}/${gameKey}/icons/${d.icon_id}` : '',
-            type: getTypeForCsv(csv || ''), // Use helper here
+            type: slotType || SlotType.WEAPON_R,
             description: '',
             weight: 0,
-            maxUpgrade: d.max_upgrade
+            maxUpgrade: d.max_upgrade,
+            category: d.category,
+            baseId: d.base_id?.toString(),
+            baseName: d.base_name,
+            variants: d.variants || undefined,
+            is_only_one: d.is_only_one,
+            max_num: d.max_num,
         }));
     } catch (e) {
         console.error("Search error", e);
+        return [];
+    }
+}
+
+export async function enrichWeapon(game: GameType, itemId: number): Promise<Item | null> {
+    try {
+        const gameKey = toBackendGame(game);
+        const res = await fetch(`${API_BASE}/${gameKey}/items/enrich-weapon?id=${itemId}&lang=en`);
+        if (!res.ok) return null;
+        const data = await res.json();
+        if (!data.item) return null;
+        const d = data.item as BackendItem;
+        return {
+            id: d.id.toString(),
+            name: d.name,
+            image: (d.icon_id && Number(d.icon_id) !== 0) ? `${API_BASE}/${gameKey}/icons/${d.icon_id}` : '',
+            type: SlotType.WEAPON_R,
+            description: '',
+            weight: 0,
+            maxUpgrade: d.max_upgrade,
+            category: d.category,
+            baseId: d.base_id?.toString(),
+            baseName: d.base_name,
+            variants: d.variants || undefined,
+        };
+    } catch (e) {
+        console.error("Failed to enrich weapon", e);
+        return null;
+    }
+}
+
+export async function enrichGoods(game: GameType, itemId: number): Promise<Item | null> {
+    try {
+        const gameKey = toBackendGame(game);
+        const res = await fetch(`${API_BASE}/${gameKey}/items/enrich-goods?id=${itemId}&lang=en`);
+        if (!res.ok) return null;
+        const data = await res.json();
+        if (!data.item) return null;
+        const d = data.item as BackendItem;
+        return {
+            id: d.id.toString(),
+            name: d.name,
+            image: (d.icon_id && Number(d.icon_id) !== 0) ? `${API_BASE}/${gameKey}/icons/${d.icon_id}` : '',
+            type: SlotType.QUICK_ITEM,
+            description: '',
+            weight: 0,
+            maxUpgrade: d.max_upgrade,
+            category: d.category,
+            baseId: d.base_id?.toString(),
+            baseName: d.base_name,
+            variants: d.variants || undefined,
+        };
+    } catch (e) {
+        console.error("Failed to enrich goods", e);
+        return null;
+    }
+}
+
+export async function getSlotCategories(game: GameType, slotKey: string, equipOnly?: boolean): Promise<string[]> {
+    try {
+        const gameKey = toBackendGame(game);
+        let url = `${API_BASE}/${gameKey}/items/slot-categories?slot=${slotKey}`;
+        if (equipOnly) {
+            url += '&equip_only=true';
+        }
+        const res = await fetch(url);
+        if (!res.ok) return [];
+        const data = await res.json();
+        return data.categories || [];
+    } catch (e) {
+        console.error("Failed to get slot categories", e);
         return [];
     }
 }
@@ -350,7 +407,7 @@ export function transformBackendPlayer(game: GameType, p: BackendPlayer): Player
                 }
 
                 const displayName = upgrade ? `${itemData.name} +${upgrade}` : itemData.name;
-                const itemType = getTypeForBackendKey(beKey);
+                const itemType = getSlotInfo(game, feKey)?.slotType ?? SlotType.WEAPON_R;
                 const showImage = itemData.icon_id && Number(itemData.icon_id) !== 0 && !itemData.name.toLowerCase().includes('unarmed') && !itemData.name.toLowerCase().includes('unknown');
 
                 slots[feKey] = {
@@ -362,6 +419,7 @@ export function transformBackendPlayer(game: GameType, p: BackendPlayer): Player
                     weight: 0,
                     upgrade,
                     maxUpgrade: itemData.max_upgrade,
+                    category: itemData.category,
                     gemId: itemData.gem_id,
                     count: itemData.count
                 };
@@ -392,6 +450,7 @@ export function transformBackendPlayer(game: GameType, p: BackendPlayer): Player
             mapSlot("accessory_4", "talisman_4");
             mapSlot("physick_tear_1", "physick_tear_1");
             mapSlot("physick_tear_2", "physick_tear_2");
+            mapSlot("great_rune", "great_rune");
         }
 
         for (let i = 1; i <= 10; i++) {
@@ -617,7 +676,7 @@ export async function writeBuild(game: GameType, playerNum: number, slots: Recor
         }
     }
 
-    console.log("Applying build payload:", JSON.stringify(payload, null, 2));
+    if (import.meta.env.DEV) console.log("Applying build payload:", JSON.stringify(payload, null, 2));
 
     const res = await fetch(`${API_BASE}/${gameKey}/players/${playerNum}/build`, {
         method: 'POST',
@@ -692,7 +751,7 @@ export function mapBackendToFrontendSlots(game: GameType, backendEq: Record<stri
         // Suppress images for Unarmed/Unknown or ID 0 as requested
         const showImage = itemData.icon_id && Number(itemData.icon_id) !== 0 && !displayName.toLowerCase().includes('unarmed') && !displayName.toLowerCase().includes('unknown');
 
-        const itemType = getTypeForBackendKey(beKey);
+        const itemType = getSlotInfo(game, feKey)?.slotType ?? SlotType.WEAPON_R;
 
         slots[feKey] = {
             id: itemData.id.toString(),
@@ -703,8 +762,11 @@ export function mapBackendToFrontendSlots(game: GameType, backendEq: Record<stri
             weight: 0,
             upgrade: upgrade,
             maxUpgrade: itemData.max_upgrade,
+            category: itemData.category,
             gemId: itemData.gem_id || undefined,
-            count: itemData.count
+            count: itemData.count,
+            is_only_one: itemData.is_only_one,
+            max_num: itemData.max_num,
         };
     };
 
@@ -720,6 +782,7 @@ export function mapBackendToFrontendSlots(game: GameType, backendEq: Record<stri
     mapSlot("leggings", "legs");
     mapSlot("physick_tear_1", "physick_tear_1");
     mapSlot("physick_tear_2", "physick_tear_2");
+    mapSlot("great_rune", "great_rune");
 
     if (game === 'DARK_SOULS_3') {
         // Legacy support
@@ -791,7 +854,7 @@ export function convertBuildToSaveFormat(game: GameType, slots: Record<string, I
             // - Include `ash_of_war` metadata for weapons when present
             const finalCount = feKey.startsWith('ammo')
                 ? (item.count ?? DEFAULT_AMMO_COUNT)
-                : (feKey.startsWith('quick') ? item.count : undefined);
+                : (feKey.startsWith('quick') ? (item.count ?? item.max_num ?? DEFAULT_QUICK_ITEM_COUNT) : undefined);
 
             if ((isWeaponBackendSlot(beKey) && item.gemId) || finalCount !== undefined) {
                 equipment[beKey] = {

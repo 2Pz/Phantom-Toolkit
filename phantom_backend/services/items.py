@@ -51,7 +51,130 @@ class ItemRow:
     normalized_name: str
     icon_id: str | None = None
     max_upgrade: int = 0
+    category: str | None = None
+    is_only_one: bool = False
+    is_equip: bool = False
+    max_num: int | None = None
     raw: dict[str, Any] | None = None
+
+
+def _load_goods_csv(game_key: str) -> dict[int, ItemRow]:
+    """Load EquipParamGoods.csv for a game, returning the full table."""
+    try:
+        svc = ItemAssetService(game_key=game_key)
+        csv_path = svc.items_dir() / "EquipParamGoods.csv"
+        if csv_path.exists():
+            return _load_csv(csv_path, "en", game_key)
+    except Exception:
+        pass
+    return {}
+
+
+def load_is_only_one_map(game_key: str) -> dict[int, bool]:
+    """Load isOnlyOne column from EquipParamGoods.csv for a game."""
+    return {
+        item_id: row.is_only_one for item_id, row in _load_goods_csv(game_key).items()
+    }
+
+
+def load_max_num_map(game_key: str) -> dict[int, int | None]:
+    """Load maxNum column from EquipParamGoods.csv for a game.
+
+    Returns a dict mapping item base ID -> max_num (or None if missing).
+    """
+    return {item_id: row.max_num for item_id, row in _load_goods_csv(game_key).items()}
+
+
+def group_weapon_variants(items: list[dict]) -> list[dict]:
+    """Group weapon items by base ID, returning base entries with variant lists.
+
+    Infusible weapons have affinity variants at id = base + n*100.
+    Groups by base_id = id - (id % 10000). Single-item groups are unique weapons.
+    """
+    groups: dict[int, list[dict]] = {}
+    for item in items:
+        base_id = item["id"] - (item["id"] % 10000)
+        groups.setdefault(base_id, []).append(item)
+
+    result: list[dict] = []
+    for group in groups.values():
+        if len(group) == 1:
+            result.append({**group[0], "variants": None})
+        else:
+            base = next((i for i in group if i["id"] % 10000 == 0), group[0])
+            variants = [
+                {"id": i["id"], "name": i["name"]}
+                for i in group
+                if i["id"] != base["id"]
+            ]
+            result.append(
+                {
+                    **base,
+                    "base_id": base["id"],
+                    "base_name": base["name"],
+                    "variants": variants,
+                }
+            )
+    return result
+
+
+SPIRIT_SUMMON_CATEGORIES = frozenset(
+    {"Spirit Summon - Lesser", "Spirit Summon - Greater"}
+)
+
+
+def group_spirit_summons(items: list[dict]) -> list[dict]:
+    """Group spirit summon goods by base ID (id - id % 1000), returning base entries with variant lists.
+
+    Spirit summons have upgrade levels +0..+10 at id = base + level.
+    Groups by base_id = id - (id % 1000). Non-spirit items pass through unmodified.
+    """
+    spirit_items = [i for i in items if i.get("category") in SPIRIT_SUMMON_CATEGORIES]
+    other_items = [
+        i for i in items if i.get("category") not in SPIRIT_SUMMON_CATEGORIES
+    ]
+
+    groups: dict[int, list[dict]] = {}
+    for item in spirit_items:
+        base_id = item["id"] - (item["id"] % 1000)
+        groups.setdefault(base_id, []).append(item)
+
+    result = list(other_items)
+    for group in groups.values():
+        if len(group) == 1:
+            result.append({**group[0], "variants": None})
+        else:
+            base = next((i for i in group if i["id"] % 1000 == 0), group[0])
+            variants = [
+                {"id": i["id"], "name": i["name"]}
+                for i in group
+                if i["id"] != base["id"]
+            ]
+            result.append(
+                {
+                    **base,
+                    "base_id": base["id"],
+                    "base_name": base["name"],
+                    "variants": variants,
+                }
+            )
+    return result
+
+
+# Maps internal game keys to physical directory names in the items/ folder.
+_GAME_DIR_MAP: dict[str, list[str]] = {
+    "eldenring": ["ER", "eldenring", "EldenRing"],
+    "ds3": ["DS3", "ds3", "DARK_SOULS_3"],
+}
+
+
+def _resolve_items_dir(root: Path, game_key: str) -> Path | None:
+    """Try each known directory name for a game key under root."""
+    for name in _GAME_DIR_MAP.get(game_key, [game_key]):
+        p = root / name
+        if p.exists():
+            return p
+    return None
 
 
 class ItemAssetService:
@@ -64,9 +187,6 @@ class ItemAssetService:
     def items_dir(self) -> Path:
         # Explicit override (useful for Proton/AppImage where the Python process
         # runs under Wine and external assets live next to the .AppImage file).
-        #
-        # Example value:
-        #   Z:\home\user\Downloads\PhantomToolkit\items
         override = os.environ.get("PHANTOM_ITEMS_DIR", "").strip()
         if override:
             p = Path(override)
@@ -77,33 +197,25 @@ class ItemAssetService:
         import sys
 
         if getattr(sys, "frozen", False):
-            # PyInstaller: `sys.executable` is the bundled binary path.
-            # AppImage: `sys.executable` points INSIDE the mounted image, but the
-            # external files live next to the `.AppImage` file on disk.
-
-            # 1a. Check next to the running executable (Windows/Linux onefile)
             exe_dir = Path(sys.executable).resolve().parent
-            frozen_items = exe_dir / "items" / self._game
-            if frozen_items.exists():
-                return frozen_items
+            found = _resolve_items_dir(exe_dir / "items", self._game)
+            if found:
+                return found
 
-            # 1b. AppImage runtime sets $APPIMAGE to the path of the AppImage file.
-            # If present, prefer looking next to that file for external assets.
             appimage_path = os.environ.get("APPIMAGE")
             if appimage_path:
                 appimage_dir = Path(appimage_path).resolve().parent
-                appimage_items = appimage_dir / "items" / self._game
-                if appimage_items.exists():
-                    return appimage_items
+                found = _resolve_items_dir(appimage_dir / "items", self._game)
+                if found:
+                    return found
 
         # 2. Check local project items/{game} (Development mode)
-        local_root = Path(__file__).resolve().parents[2]  # 2Pz_Phantom_Toolki
-        local_items = local_root / "items" / self._game
-        if local_items.exists():
-            return local_items
+        local_root = Path(__file__).resolve().parents[2]
+        found = _resolve_items_dir(local_root / "items", self._game)
+        if found:
+            return found
 
         # Fallback to external repo structure
-        # DS3 repo uses items/Images.zip; ER repo has zips too.
         return self._repo_root() / "items"
 
     def images_zip(self) -> Path:
@@ -125,6 +237,17 @@ class ItemAssetService:
 
     def list_csv_files(self) -> list[str]:
         return sorted([p.name for p in self.items_dir().glob("*.csv")])
+
+    def get_distinct_categories(self, csv_name: str, column: str) -> tuple[str, ...]:
+        """Return all distinct values from a column in a CSV file."""
+        path = self.items_dir() / csv_name
+        return _distinct_csv_values(path, column)
+
+    def get_distinct_weapon_categories(self) -> list[str]:
+        """Return all weapon categories from EquipParamWeapon.csv, excluding ammo types."""
+        path = self.items_dir() / "EquipParamWeapon.csv"
+        all_cats = _distinct_csv_values(path, "category")
+        return [c for c in all_cats if c.lower() not in ("arrow", "bolt")]
 
     def _load_csv(
         self, csv_name: str, language: str | None = None
@@ -165,33 +288,24 @@ class ItemAssetService:
     def find_item_any_csv(
         self, item_id: int, language: str | None = None, hints: list[str] | None = None
     ) -> ItemRow | None:
-        """Find an item by ID across all known CSVs, prioritizing hints."""
-        candidates = self.list_csv_files()
+        """Find an item by ID, optionally restricting to hinted CSV names."""
         if language is None:
             language = ConfigManager().language
 
-        if hints:
-            # Reorder: hints first
-            others = [c for c in candidates if c not in hints]
-            candidates = hints + others  # Search hints first?
-            # Actually, if we provide hints, we probably ONLY want those for correctness?
-            # But what if ID is wrong?
-            # If "Ash of War in Armor slot", we specifically want to FAIL instead of returning Ash of War.
-            # So if hints provided, we should probably restrict to them?
-            # But let's support fallback if strictly needed.
-            # Given the bug, Strict is better.
-            candidates = hints
+        candidates = hints or self.list_csv_files()
 
-        # 1. Exact match
-        for csv_file in candidates:
-            # Handle potential case mismatch in hints if manual strings passed
-            # But list_csv_files depends on file system. simpler to just use passed string if it exists?
-            # Let's rely on _load_csv handling simple strings.
-            table = self._load_csv(csv_file, language)
-            if item_id in table:
-                return table[item_id]
+        def _search(files: list[str]) -> ItemRow | None:
+            for csv_file in files:
+                table = self._load_csv(csv_file, language)
+                if item_id in table:
+                    return table[item_id]
+            return None
 
-        # 2. Normalized match (for Upgraded weapons)
+        found = _search(candidates)
+        if found:
+            return found
+
+        # Normalized match for upgraded weapons
         norm_id = self._normalize_weapon_id(item_id)
         if norm_id != item_id:
             for csv_file in candidates:
@@ -221,20 +335,54 @@ class ItemAssetService:
         """Map stem -> full path inside zip for fast lookup."""
         return _get_zip_namelist(str(self.images_zip()))
 
-    def search_items(
+    def enrich_weapon(self, item_id: int, language: str | None = None) -> dict | None:
+        """Given any weapon variant ID, return the grouped entry with all variants/baseId/baseName."""
+        table = self._load_csv("EquipParamWeapon.csv", language)
+        base_id = item_id - (item_id % 10000)
+        matching = [
+            row for row in table.values() if row.id - (row.id % 10000) == base_id
+        ]
+        if not matching:
+            return None
+        items_dict = [row.__dict__ for row in matching]
+        grouped = group_weapon_variants(items_dict)
+        return grouped[0] if grouped else None
+
+    def enrich_goods(self, item_id: int, language: str | None = None) -> dict | None:
+        """Given any goods ID, return grouped entry with variants for spirit summons.
+
+        For spirit summons, groups by id - (id % 1000). Non-spirit goods return as-is.
+        """
+        table = self._load_csv("EquipParamGoods.csv", language)
+        base_id = item_id - (item_id % 1000)
+        matching = [
+            row for row in table.values() if row.id - (row.id % 1000) == base_id
+        ]
+        if not matching:
+            return None
+        items_dict = [row.__dict__ for row in matching]
+        grouped = group_spirit_summons(items_dict)
+        # If it's not a spirit summon, return as single item
+        if grouped:
+            return grouped[0]
+        return items_dict[0]
+
+    def search_items(  # noqa: PLR0913
         self,
         *,
         csv_name: str | None = None,
         q: str,
+        categories: list[str] | None = None,
         language: str | None = None,
         limit: int = 50,
+        equip_only: bool = False,
     ) -> list[ItemRow]:
-        """Search items. If csv_name is None, search all."""
-        # Normalize the query using the same helper
-        qn = normalize_text(q)
-        if not qn and not csv_name:
-            return []
+        """Search items.
 
+        If csv_name is None, search all CSVs for the game.
+        If categories is provided, only items matching those categories are returned.
+        """
+        qn = normalize_text(q)
         if language is None:
             language = ConfigManager().language
 
@@ -244,11 +392,29 @@ class ItemAssetService:
         for fname in sources:
             table = self._load_csv(fname, language)
             for item in table.values():
-                # Compare normalized query against normalized name
-                if not qn or qn in item.normalized_name or qn in str(item.id):
-                    hits.append(item)
+                if categories and item.category not in categories:
+                    continue
+                if equip_only:
+                    # Remove unequipable categories
+                    if not item.category or item.category in (
+                        "Key Item",
+                        "Info Item",
+                        "Reinforcement Material",
+                        "Regenerative Material",
+                        "Crafting Material",
+                    ):
+                        continue
+                    # Remove items where is_equip is False, specifically in "Normal Item" and "Consumable"
+                    if not item.is_equip and item.category in (
+                        "Normal Item",
+                        "Consumable",
+                    ):
+                        continue
+                if qn and qn not in item.normalized_name and qn not in str(item.id):
+                    continue
+                hits.append(item)
                 if len(hits) >= limit:
-                    return hits  # Global limit
+                    return hits
         return hits
 
     def read_icon_bytes(self, icon_id: str) -> bytes:
@@ -256,9 +422,18 @@ class ItemAssetService:
 
         target = mapping.get(icon_id)
         if not target:
-            # Try fuzzy match: keys ending with _{icon_id}
-            # This covers MENU_Knowledge_10000 when icon_id is 10000
+            # Fuzzy match: keys ending with _{icon_id}
+            # Covers MENU_Knowledge_10000 when icon_id is 10000
             suffix = f"_{icon_id}"
+            for k, v in mapping.items():
+                if k.endswith(suffix):
+                    target = v
+                    break
+
+        if not target and icon_id.isdigit():
+            # Some icon_ids need zero-padding (e.g. "3829" -> "_03829")
+            padded = icon_id.zfill(5)
+            suffix = f"_{padded}"
             for k, v in mapping.items():
                 if k.endswith(suffix):
                     target = v
@@ -266,8 +441,6 @@ class ItemAssetService:
 
         if target:
             zf = self._get_shared_zip()
-            # ZipFile.read is thread-safe enough for concurrent reads of different files in Python 3?
-            # To be absolutely safe we can lock.
             with _GLOBAL_ZIP_LOCK:
                 return zf.read(target)
 
@@ -321,8 +494,6 @@ def _get_global_zip_handle(path: str) -> zipfile.ZipFile:
             handle, last_mtime = cached
             if last_mtime == mtime:
                 return handle
-            # File changed, close old and reload
-            # File changed, close old and reload
             with contextlib.suppress(Exception):
                 handle.close()
 
@@ -361,11 +532,28 @@ def _get_zip_namelist(zip_path_str: str) -> dict[str, str]:
     return mapping
 
 
+@lru_cache(maxsize=32)
+def _distinct_csv_values(path: Path, column: str) -> tuple[str, ...]:
+    """Read all distinct values from a column in a CSV file."""
+    if not path.exists():
+        return ()
+    values: set[str] = set()
+    with path.open("r", encoding="utf-8-sig") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            val = row.get(column)
+            if val:
+                val = val.strip('" ')
+                if val:
+                    values.add(val)
+    return tuple(sorted(values))
+
+
 @lru_cache(maxsize=256)
 def _load_csv(path: Path, language: str, game: str) -> dict[int, ItemRow]:
     if not path.exists():
         return {}  # Return empty instead of raising if file missing (e.g. during dev)
-    with path.open("r", encoding="utf-8") as f:
+    with path.open("r", encoding="utf-8-sig") as f:
         reader = csv.DictReader(f)
         out: dict[int, ItemRow] = {}
         for row in reader:
@@ -376,17 +564,27 @@ def _load_csv(path: Path, language: str, game: str) -> dict[int, ItemRow]:
             name = row.get(language) or row.get("en") or row.get("name") or f"{item_id}"
             icon_id = row.get("icon_id") or row.get("icon") or None
 
+            # Read category (or goods_type for Goods CSV)
+            category = row.get("category") or row.get("goods_type") or None
+            if category:
+                category = category.strip('" ')
+
             # Determine max upgrade level
             upgrade_type = row.get("Upgrade")
             max_upgrade = 0
             if upgrade_type == "Smithing Stones":
                 max_upgrade = 25
-            elif (
-                upgrade_type == "Somber Smithing Stones"
-                or game == "ds3"
-                and "Weapons" in path.name
-            ):
+            elif upgrade_type in ("Somber Smithing Stones", "Titanite"):
                 max_upgrade = 10
+            elif upgrade_type in ("Twinkling Titanite", "Titanite Scale"):
+                max_upgrade = 5
+
+            is_only_one = row.get("isOnlyOne", "0").replace('"', "").strip() == "1"
+            is_equip = row.get("isEquip", "0").replace('"', "").strip() == "1"
+            raw_max = row.get("maxNum")
+            max_num = (
+                int(raw_max.replace('"', "").strip()) if raw_max is not None else None
+            )
 
             out[item_id] = ItemRow(
                 id=item_id,
@@ -394,6 +592,10 @@ def _load_csv(path: Path, language: str, game: str) -> dict[int, ItemRow]:
                 normalized_name=normalize_text(str(name)),
                 icon_id=str(icon_id) if icon_id else None,
                 max_upgrade=max_upgrade,
+                category=category,
+                is_only_one=is_only_one,
+                is_equip=is_equip,
+                max_num=max_num,
                 raw=row,
             )
         return out

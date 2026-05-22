@@ -8,6 +8,7 @@ from phantom_backend.api.models import (
     WriteStatsRequest,
 )
 from phantom_backend.games.registry import GameRegistry
+from phantom_backend.services.item_catalog import lookup as catalog_lookup
 from phantom_backend.services.items import ItemAssetService
 from phantom_backend.services.players import PlayerService
 from phantom_backend.services.recent_players import RecentPlayersService
@@ -15,23 +16,12 @@ from phantom_backend.services.recent_players import RecentPlayersService
 router = APIRouter(prefix="/{game}", tags=["players"])
 
 
-SLOT_CSV_MAP = {
-    "helmet": ["Heads.csv"],
-    "armor": ["Chests.csv"],
-    "gauntlet": ["Gauntlets.csv"],
-    "leggings": ["Leggings.csv"],
-    "accessory": ["Talismans.csv"],  # partial match for keys starting with accessory
-    "talisman": ["Talismans.csv"],
-    "ring": ["Rings.csv", "Talismans.csv", "Accessories.csv"],  # DS3 is Rings.csv
-    "weapon": ["Weapons.csv"],
-    "wep": ["Weapons.csv"],
-    "arrow": ["Ammunitions.csv"],
-    "bolt": ["Ammunitions.csv"],
-    "magic": ["Spells.csv"],
-    "spell": ["Spells.csv"],
-    "quick": ["QuickItems.csv"],
-    "physick": ["PhysickTears.csv"],
-}
+def _csv_hints_for_slot(game: str, slot_key: str) -> list[str] | None:
+    resolved = catalog_lookup(game, slot_key)
+    if resolved is None:
+        return None
+    csv_name, _cat_col, _cats = resolved
+    return [csv_name]
 
 
 def _enrich_player_data(p: PlayerService.PlayerState, game: str) -> PlayerDetails:
@@ -39,43 +29,20 @@ def _enrich_player_data(p: PlayerService.PlayerState, game: str) -> PlayerDetail
     enriched_eq = {}
     if p.equipment:
         for slot, item_val in p.equipment.items():
-            # Normalize sentinel "empty" values that are still positive integers.
-            # (Some slots use 0x0FFFFFFF as an empty placeholder.)
             if item_val in (-1, 0xFFFFFFFF, 0x0FFFFFFF):
                 enriched_eq[slot] = None
                 continue
 
             if isinstance(item_val, int) and item_val > -1:
-                # Determine CSV hints based on slot name
-                hints = []
-                for k, v in SLOT_CSV_MAP.items():
-                    if k in slot:
-                        hints.extend(v)
-                        break  # Optimization: assume first match is good enough?
-                        # E.g. "primary_right_wep" matches "wep" -> Weapons.csv
-                        # "accessory_1" matches "accessory" -> Talismans.csv
-
-                # DS3 handling?
-                # If game is DS3, Talismans.csv might be wrong.
-                # But list_csv_files will just ignore non-existent hints?
-                # Actually my item service modification prioritizes hints.
-                # If DS3 has Accessories.csv, and we hint Talismans.csv, we might miss it if we ONLY search hints?
-                # My logic `candidates = hints` implies exclusive search.
-                # So I must be accurate.
-                # DS3 CSVs: AccessoriesIDs.csv?
-                # `list_dir` was for ELDEN RING.
-                # I should assume DS3 uses different names potentially.
-                # But user issue is Elden Ring (Ash of War).
-                # I'll stick to ER names for now. If DS3 breaks, I'll need game-specific map.
-
+                hints = _csv_hints_for_slot(game, slot)
                 found = item_svc.find_item_any_csv(item_val, hints=hints)
                 if found:
                     enriched_eq[slot] = {
                         "id": item_val,
                         "name": found.name,
-                        "image": found.icon_id,
                         "icon_id": found.icon_id,
                         "max_upgrade": found.max_upgrade,
+                        "category": found.category,
                     }
                 else:
                     enriched_eq[slot] = {

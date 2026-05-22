@@ -13,7 +13,8 @@ export enum SlotType {
   QUICK_ITEM = 'QUICK_ITEM',
   COVENANT = 'COVENANT',
   SPELL = 'SPELL',
-  PHYSICK = 'PHYSICK'
+  PHYSICK = 'PHYSICK',
+  GREAT_RUNE = 'GREAT_RUNE'
 }
 
 export type GameType = 'ELDEN_RING' | 'DARK_SOULS_3';
@@ -28,8 +29,13 @@ export interface Item {
   weight?: number;
   upgrade?: number;
   maxUpgrade?: number;
-  infusion?: string;
   gemId?: number;
+  category?: string;
+  baseId?: string;
+  baseName?: string;
+  variants?: { id: number; name: string }[];
+  is_only_one?: boolean;
+  max_num?: number;
 }
 
 export interface BackendItem {
@@ -37,8 +43,14 @@ export interface BackendItem {
   name: string;
   icon_id: string | null;
   max_upgrade: number;
+  category?: string;
   gem_id?: number;
   count?: number;
+  base_id?: number;
+  base_name?: string;
+  variants?: { id: number; name: string }[] | null;
+  is_only_one?: boolean;
+  max_num?: number;
 }
 
 export interface AppConfig {

@@ -23,8 +23,7 @@ error_log.txt
 
 # Item assets (large images/CSVs)
 # We ignore everything inside items/ except the folder structure or README
-items/ds3/**
-items/eldenring/**
+items/
 
 # AppImage tooling (downloaded/extracted locally)
 packaging/appimage/appimagetool*

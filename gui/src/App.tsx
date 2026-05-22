@@ -1,14 +1,15 @@
 
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { Item } from './types';
 import type { Build, GameType, StatusState, PlayerData } from './types';
-import { SLOT_CSV_MAPPING } from './constants';
+import { getSlotInfo } from './constants';
 import EquipmentGrid from './components/EquipmentGrid';
 import { AlertModal } from './components/Modal';
 import BackupTab from './components/BackupTab';
-import { detectGame, getPlayers, getRecentPlayers, quitToMenu, fixInfiniteLoading, toggleFogWall, writeStats, toggleCheat as apiToggleCheat, searchItems, writeBuild, inspectBuild, mapBackendToFrontendSlots, convertBuildToSaveFormat, saveBuild, browseSaveFile, getConfig, getMetadata, openUrl, updateConfig } from './api';
+import { detectGame, getPlayers, getRecentPlayers, quitToMenu, fixInfiniteLoading, toggleFogWall, writeStats, toggleCheat as apiToggleCheat, searchItems, enrichWeapon, enrichGoods, writeBuild, inspectBuild, mapBackendToFrontendSlots, convertBuildToSaveFormat, saveBuild, browseSaveFile, getConfig, getMetadata, openUrl, updateConfig, getSlotCategories } from './api';
 import type { AppMetadata } from './api';
 import WeaponConfig from './components/WeaponConfig';
+import SpiritSummonConfig from './components/SpiritSummonConfig';
 import { LanguageSelector } from './components/LanguageSelector';
 
 const ER_ATTRIBUTES = ['Vigor', 'Mind', 'Endurance', 'Strength', 'Dexterity', 'Intelligence', 'Faith', 'Arcane'];
@@ -405,32 +406,6 @@ const MainTab: React.FC<{
   );
 };
 
-function getCategoryForSlot(game: GameType, slotId: string): string | undefined {
-  const mapping = SLOT_CSV_MAPPING[game];
-  if (!mapping) return undefined;
-
-  let type: string | undefined;
-
-  const s = slotId.toLowerCase();
-
-  if (s.startsWith('weapon_r')) type = 'WEAPON_R';
-  else if (s.startsWith('weapon_l')) type = 'WEAPON_L';
-  else if (s.startsWith('ammo_arrow') || s.startsWith('ammo_1')) type = 'AMMO_ARROW';
-  else if (s.startsWith('ammo_bolt') || s.startsWith('ammo_2')) type = 'AMMO_BOLT';
-  else if (s === 'head') type = 'ARMOR_HEAD';
-  else if (s === 'chest') type = 'ARMOR_CHEST';
-  else if (s === 'hands') type = 'ARMOR_HANDS';
-  else if (s === 'legs') type = 'ARMOR_LEGS';
-  else if (s.startsWith('ring')) type = 'RING';
-  else if (s.startsWith('talisman')) type = 'TALISMAN';
-  else if (s === 'covenant') type = 'COVENANT';
-  else if (s.startsWith('quick')) type = 'QUICK_ITEM';
-  else if (s.startsWith('spell')) type = 'SPELL';
-  else if (s.startsWith('physick')) type = 'PHYSICK';
-
-  return type ? mapping[type] : undefined;
-}
-
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'main' | 'build' | 'toolkit' | 'backup'>('main');
   const [selectedGame, setSelectedGame] = useState<GameType>('ELDEN_RING');
@@ -492,6 +467,8 @@ const App: React.FC = () => {
   // Search State
   const [searchResults, setSearchResults] = useState<Item[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [availableCategories, setAvailableCategories] = useState<string[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState<string>('');
 
   const [sessionPlayers, setSessionPlayers] = useState<PlayerData[]>([]);
   const [recentPlayers, setRecentPlayers] = useState<PlayerData[]>([]);
@@ -555,40 +532,64 @@ const App: React.FC = () => {
   // Prevent multiple save-file dialogs from opening due to click races.
   const saveBuildPickingRef = React.useRef(false);
   const [saveBuildPicking, setSaveBuildPicking] = useState(false);
+  const enrichSlotRef = useRef<string | null>(null);
+  const searchResultsRef = useRef<HTMLDivElement | null>(null);
+  const shouldScrollToItemRef = useRef(false);
 
   // Search Effect
   useEffect(() => {
     const doSearch = async () => {
-      // If no slot selected or looking at another player, clear results
       if (!selectedSlot || (viewedName !== localName && viewedName !== '')) {
         setSearchResults([]);
         return;
       }
 
-      const category = getCategoryForSlot(selectedGame, selectedSlot);
-      if (!category) {
+      const slotInfo = getSlotInfo(selectedGame, selectedSlot);
+      if (!slotInfo) {
         setSearchResults([]);
         return;
       }
 
       setIsSearching(true);
-
-      // Search with empty query implies "list all" (or first N) for that category
       const query = searchQuery;
-      // Backend handles empty q + valid csv
-      const results = await searchItems(selectedGame, query, category, 50);
+      // When filtering by a specific category, fetch enough items to include the equipped one
+      const limit = selectedCategory ? 500 : 50;
+      const results = await searchItems(
+        selectedGame, query,
+        slotInfo.csv,
+        slotInfo.slotType,
+        slotInfo.slotKey,
+        selectedCategory || undefined,
+        limit,
+        true // equipOnly
+      );
       setSearchResults(results);
       setIsSearching(false);
     };
 
-    // Debounce only if there is a query, otherwise load immediate? 
-    // Actually debounce is fine, but maybe shorter for empty query?
-    // Let's keep it simple: 300ms debounce is fine.
     const timeout = setTimeout(doSearch, 300);
     return () => clearTimeout(timeout);
-  }, [searchQuery, selectedSlot, selectedGame, viewedName, localName]);
+  }, [searchQuery, selectedSlot, selectedGame, viewedName, localName, selectedCategory]);
 
-
+  // Fetch available categories when slot/game changes
+  useEffect(() => {
+    if (!selectedSlot) {
+      setAvailableCategories([]);
+      setSelectedCategory('');
+      return;
+    }
+    const slotInfo = getSlotInfo(selectedGame, selectedSlot);
+    if (!slotInfo) {
+      setAvailableCategories([]);
+      setSelectedCategory('');
+      return;
+    }
+    getSlotCategories(selectedGame, slotInfo.slotKey, true).then(cats => {
+      setAvailableCategories(cats);
+      // Keep current category filter if still valid for this slot
+      setSelectedCategory(prev => (prev && !cats.includes(prev)) ? '' : prev);
+    });
+  }, [selectedSlot, selectedGame]);
 
   const localPlayer: PlayerData = {
     name: localName,
@@ -694,7 +695,7 @@ const App: React.FC = () => {
     // Only ammo gets a safe default count; quick items default to "keep current quantity"
     // unless the user explicitly adjusts the slider (sets `count`).
     const newItem = selectedSlot.startsWith('ammo')
-      ? { ...item, count: item.count ?? 99 }
+      ? { ...item, count: item.count ?? item.max_num ?? 99 }
       : { ...item };
 
     // Keep it as pending to allow customization (upgrades, etc.)
@@ -747,14 +748,6 @@ const App: React.FC = () => {
     reader.onload = async (e) => {
       try {
         const json = JSON.parse(e.target?.result as string);
-        // Support both structure formats if accidentally nested or not
-        // Support both structure formats if accidentally nested or not
-        // unused 'content' var was here, effectively we just used json directly below or need content usage?
-        // The original code used json.build checks. 
-        // Let's see: if (!json.build && !json.equipment), maybe content logic was intended but unused.
-        // I will keep the logic but remove unused assignment if possible. 
-        // Actually, looking at original code: const content = ...; then if (json.build) ...
-        // 'content' IS unused.
 
         if (json.build) {
           setLocalBuild(json.build);
@@ -878,6 +871,18 @@ const App: React.FC = () => {
 
   const configItem = pendingItem || currentSelectedItem;
 
+  // Scroll search results to the highlighted (equipped) item when a slot is selected
+  useEffect(() => {
+    if (!shouldScrollToItemRef.current) return;
+    if (!currentSelectedItem || !searchResultsRef.current) return;
+    const el = document.getElementById("search-result-" + currentSelectedItem.id)
+      || (currentSelectedItem.baseId && document.getElementById("search-result-" + currentSelectedItem.baseId));
+    if (el) {
+      el.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      shouldScrollToItemRef.current = false;
+    }
+  }, [searchResults, currentSelectedItem]);
+
   const handleClearSlot = useCallback((feKey: string) => {
     if (!isLocalView) return;
     setLocalBuild(prev => ({
@@ -888,6 +893,76 @@ const App: React.FC = () => {
       setLocalStatus(prev => ({ ...prev, covenant: '-' }));
     }
   }, [isLocalView]);
+
+  const handleSlotSelect = async (slotId: string) => {
+    enrichSlotRef.current = slotId;
+    shouldScrollToItemRef.current = true;
+    setSelectedSlot(slotId);
+    setPendingItem(null);
+    setSearchQuery('');
+
+    const slotItem = viewedBuild.slots[slotId];
+    // Show items in the same category so the equipped one appears in results
+    if (slotItem?.category) {
+      setSelectedCategory(slotItem.category);
+    }
+
+    if (slotItem && slotItem.maxUpgrade && slotItem.maxUpgrade > 0 && !slotItem.variants) {
+      const slotInfo = getSlotInfo(selectedGame, slotId);
+      if (!slotInfo) return;
+      try {
+        const enriched = await enrichWeapon(selectedGame, parseInt(slotItem.id));
+        if (enrichSlotRef.current !== slotId) return;
+        if (enriched) {
+          const merged: Item = {
+            ...enriched,
+            id: slotItem.id,
+            name: slotItem.name,
+            upgrade: slotItem.upgrade,
+            gemId: slotItem.gemId,
+            count: slotItem.count,
+          };
+          setLocalBuild(prev => ({
+            ...prev,
+            slots: { ...prev.slots, [slotId]: merged }
+          }));
+          if (enriched.category && enrichSlotRef.current === slotId) {
+            setSelectedCategory(enriched.category);
+          }
+          if (enrichSlotRef.current === slotId) {
+            setPendingItem(merged);
+          }
+        }
+      } catch { /* ignore stale/errored enrichments */ }
+    }
+
+    // Enrich spirit summons with variant data
+    const isSpiritSummon = slotItem?.category?.toLowerCase().includes('spirit summon');
+    if (slotItem && isSpiritSummon && !slotItem.variants) {
+      try {
+        const enriched = await enrichGoods(selectedGame, parseInt(slotItem.id));
+        if (enrichSlotRef.current !== slotId) return;
+        if (enriched) {
+          const merged: Item = {
+            ...enriched,
+            id: slotItem.id,
+            name: slotItem.name,
+            count: slotItem.count,
+          };
+          setLocalBuild(prev => ({
+            ...prev,
+            slots: { ...prev.slots, [slotId]: merged }
+          }));
+          if (enriched.category && enrichSlotRef.current === slotId) {
+            setSelectedCategory(enriched.category);
+          }
+          if (enrichSlotRef.current === slotId) {
+            setPendingItem(merged);
+          }
+        }
+      } catch { /* ignore stale/errored enrichments */ }
+    }
+  };
 
   const handleConfirmEquip = () => {
     if (!pendingItem || !selectedSlot) return;
@@ -953,7 +1028,7 @@ const App: React.FC = () => {
 
         <nav className="flex gap-1 overflow-x-auto no-scrollbar">
           <button onClick={() => setActiveTab('main')} className={`px-4 py-2 transition-all fantasy-font uppercase tracking-widest text-xs border-b-2 whitespace-nowrap ${activeTab === 'main' ? 'text-[#bfa571] border-[#bfa571]' : 'text-gray-500 border-transparent hover:text-gray-300'}`}>Main</button>
-          <button onClick={() => setActiveTab('build')} className={`px-4 py-2 transition-all fantasy-font uppercase tracking-widest text-xs border-b-2 whitespace-nowrap ${activeTab === 'build' ? 'text-[#bfa571] border-[#bfa571]' : 'text-gray-500 border-transparent hover:text-gray-300'}`}>Creation</button>
+          <button onClick={() => { setViewedName(localName); setInspectedPlayer(null); setActiveTab('build'); }} className={`px-4 py-2 transition-all fantasy-font uppercase tracking-widest text-xs border-b-2 whitespace-nowrap ${activeTab === 'build' ? 'text-[#bfa571] border-[#bfa571]' : 'text-gray-500 border-transparent hover:text-gray-300'}`}>Creation</button>
           <button onClick={() => setActiveTab('toolkit')} className={`px-4 py-2 transition-all fantasy-font uppercase tracking-widest text-xs border-b-2 whitespace-nowrap ${activeTab === 'toolkit' ? 'text-[#bfa571] border-[#bfa571]' : 'text-gray-500 border-transparent hover:text-gray-300'}`}>Toolkit</button>
           <button onClick={() => setActiveTab('backup')} className={`px-4 py-2 transition-all fantasy-font uppercase tracking-widest text-xs border-b-2 whitespace-nowrap ${activeTab === 'backup' ? 'text-[#bfa571] border-[#bfa571]' : 'text-gray-500 border-transparent hover:text-gray-300'}`}>Backup</button>
         </nav>
@@ -1030,7 +1105,7 @@ const App: React.FC = () => {
                 selectedSlot={selectedSlot}
                 onHoverSlot={setHoveredSlot}
                 game={selectedGame}
-                onSelectSlot={(id) => { setSelectedSlot(id); setSearchQuery(''); setPendingItem(null); }}
+                onSelectSlot={handleSlotSelect}
               />
             </section >
 
@@ -1054,39 +1129,62 @@ const App: React.FC = () => {
                           <span className="text-[10px] text-gray-500 uppercase tracking-widest">ID</span>
                           <span className="text-xs text-[#bfa571] font-bold">{configItem.id || '--'}</span>
                         </div>
+                        {configItem.category && (
+                          <div className="flex justify-between items-center border-b border-white/5 pb-1">
+                            <span className="text-[10px] text-gray-500 uppercase tracking-widest">Category</span>
+                            <span className="text-xs text-[#bfa571] font-bold">{configItem.category}</span>
+                          </div>
+                        )}
                       </div>
                     </div>
 
                     {/* Pending Config Logic */}
                     {pendingItem ? (
                       <>
-                        <WeaponConfig
-                          game={selectedGame}
-                          item={configItem}
-                          onUpdate={(updated) => {
-                            setPendingItem(updated);
-                            if (selectedSlot) {
-                              setLocalBuild(prev => ({
-                                ...prev,
-                                slots: { ...prev.slots, [selectedSlot]: updated }
-                              }));
-                            }
-                          }}
-                        />
-                        {selectedSlot && (selectedSlot.startsWith('quick') || selectedSlot.startsWith('ammo')) && (
+                        {configItem.category?.toLowerCase().includes('spirit summon') ? (
+                          <SpiritSummonConfig
+                            item={configItem}
+                            onUpdate={(updated) => {
+                              setPendingItem(updated);
+                              if (selectedSlot) {
+                                setLocalBuild(prev => ({
+                                  ...prev,
+                                  slots: { ...prev.slots, [selectedSlot]: updated }
+                                }));
+                              }
+                            }}
+                          />
+                        ) : (
+                          <WeaponConfig
+                            game={selectedGame}
+                            item={configItem}
+                            onUpdate={(updated) => {
+                              setPendingItem(updated);
+                              if (selectedSlot) {
+                                setLocalBuild(prev => ({
+                                  ...prev,
+                                  slots: { ...prev.slots, [selectedSlot]: updated }
+                                }));
+                              }
+                            }}
+                          />
+                        )}
+                        {selectedSlot && (selectedSlot.startsWith('quick') || selectedSlot.startsWith('ammo')) && !configItem.is_only_one && (() => {
+                          const maxQty = configItem.max_num ?? 99;
+                          return (
                           <div className="p-4 bg-black/60 border border-[#bfa571]/30 rounded mt-4 backdrop-blur-sm">
                             <h3 className="text-lg font-bold text-[#bfa571] mb-2 font-serif">Configure Quantity</h3>
                             <div className="flex justify-between mb-1">
-                              <label className="text-gray-300 text-sm">Quantity</label>
+                              <label className="text-gray-300 text-sm">Quantity (max {maxQty})</label>
                               <span className="text-[#bfa571] font-bold font-mono">
-                                {configItem.count ?? (selectedSlot?.startsWith('ammo') ? 99 : 'KEEP')}
+                                {configItem.count ?? (selectedSlot?.startsWith('ammo') ? maxQty : 'KEEP')}
                               </span>
                             </div>
                             <input
                               type="range"
                               min="1"
-                              max="99"
-                              value={configItem.count ?? (selectedSlot?.startsWith('ammo') ? 99 : 1)}
+                              max={maxQty}
+                              value={configItem.count ?? (selectedSlot?.startsWith('ammo') ? maxQty : 1)}
                               onChange={(e) => {
                                 const newCount = parseInt(e.target.value);
                                 const updated = { ...configItem, count: newCount };
@@ -1102,10 +1200,11 @@ const App: React.FC = () => {
                             />
                             <div className="flex justify-between text-xs text-gray-500 mt-1">
                               <span>1</span>
-                              <span>99</span>
+                              <span>{maxQty}</span>
                             </div>
                           </div>
-                        )}
+                          );
+                        })()}
 
                         <div className="flex gap-2 w-full mt-2">
                           <button
@@ -1158,9 +1257,21 @@ const App: React.FC = () => {
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                 />
+                {availableCategories.length > 1 && (
+                  <select
+                    value={selectedCategory}
+                    onChange={(e) => setSelectedCategory(e.target.value)}
+                    className="w-full mt-2 py-1 px-2 text-xs tracking-widest uppercase fantasy-font bg-black/80 border border-white/20 outline-none focus:border-[#bfa571] transition-colors"
+                  >
+                    <option value="">ALL</option>
+                    {availableCategories.map(cat => (
+                      <option key={cat} value={cat}>{cat}</option>
+                    ))}
+                  </select>
+                )}
               </div>
 
-              <div className="flex-1 overflow-y-auto p-3 custom-scrollbar">
+              <div ref={searchResultsRef} className="flex-1 overflow-y-auto p-3 custom-scrollbar">
                 {isSearching ? (
                   <div className="h-full flex flex-col items-center justify-center opacity-50">
                     <p className="text-xs fantasy-font uppercase tracking-widest">Searching...</p>
@@ -1168,10 +1279,11 @@ const App: React.FC = () => {
                 ) : (
                   <div className="grid grid-cols-5 gap-1.5">
                     {searchResults.map((item) => {
-                      const isSelectedInSlot = currentSelectedItem?.id === item.id;
+                      const isSelectedInSlot = currentSelectedItem?.id === item.id || currentSelectedItem?.baseId === item.id;
                       return (
                         <div
                           key={item.id}
+                          id={"search-result-" + item.id}
                           onClick={() => (isLocalView) && handleSelectItem(item)}
                           className={`aspect-square soulslike-slot flex items-center justify-center transition-all relative ${isSelectedInSlot ? 'item-glow active' : ''} ${(isLocalView) ? 'cursor-pointer hover:selected-highlight' : 'opacity-80 cursor-default'}`}
                           title={item.name}
